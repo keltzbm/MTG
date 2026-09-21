@@ -1,1 +1,1 @@
-"""Loaders for external data. Each one normalizes to models/."""
+"""Loaders. Each turns an outside format into models; none touch the vault."""

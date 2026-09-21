@@ -1,38 +1,26 @@
-"""Card and Printing.
+"""A Printing is a physical (or digital) object; many share one oracle_id."""
 
-A Card is an oracle identity: one rules text, one set of legalities, one color
-identity. A Printing is a physical object: set, collector number, finish,
-price, border. Ownership attaches to printings; decklists attach to cards.
-"""
-
-from pydantic import BaseModel
+from dataclasses import dataclass
 
 
-class Printing(BaseModel):
+@dataclass(frozen=True)
+class Printing:
     scryfall_id: str
     oracle_id: str
+    name: str
     set_code: str
     collector_number: str
-    border_color: str            # black | white | borderless | silver | gold
-    frame: str                   # 1993 | 1997 | 2003 | 2015 | future
-    finishes: list[str]          # nonfoil | foil | etched
-    usd: float | None = None
-    usd_foil: float | None = None
+    frame: str = ""
+    border_color: str = ""
 
     @property
     def is_old_border(self) -> bool:
-        """Pre-modern frame. Preferred printing for constant-use singles."""
         return self.frame in {"1993", "1997"}
 
 
-class Card(BaseModel):
-    oracle_id: str               # the key. Never match on name.
-    name: str
-    mana_cost: str | None
-    mana_value: float
-    type_line: str
-    oracle_text: str | None
-    colors: list[str]            # WUBRG order
-    color_identity: list[str]    # WUBRG order
-    legalities: dict[str, str]
-    printings: list[Printing] = []
+@dataclass(frozen=True)
+class Prices:
+    """Cheapest across all printings of one card."""
+
+    usd: float | None = None   # paper, nonfoil
+    tix: float | None = None   # MTGO, via Scryfall (Cardhoarder)

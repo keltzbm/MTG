@@ -1,12 +1,15 @@
-"""What is physically owned, and where it currently lives."""
-
-from pydantic import BaseModel
+from dataclasses import dataclass
 
 
-class CollectionEntry(BaseModel):
-    scryfall_id: str
-    oracle_id: str
+@dataclass
+class Holding:
+    """One row of owned cards: a printing and how many."""
+
+    name: str
     quantity: int
+    scryfall_id: str | None = None
+    set_code: str | None = None
+    collector_number: str | None = None
     foil: bool = False
-    source: str = "manabox"      # manabox | precon | manual
-    located_in: str | None = None  # deck name, or None for the binder
+    source: str = "manabox"   # manabox | precon:<name>
+    oracle_id: str | None = None

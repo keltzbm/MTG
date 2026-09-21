@@ -1,1 +1,1 @@
-"""Render targets. Writes _generated/ and _log/ only — never authored notes."""
+"""Render targets: import files for other apps, and the vault's machine zones."""

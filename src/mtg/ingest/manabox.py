@@ -1,19 +1,39 @@
-"""ManaBox collection export.
+"""ManaBox collection export (CSV).
 
-Gotchas that cost time before, encoded here so they cost it once:
-  * The file carries a UTF-8 BOM. Read with encoding="utf-8-sig".
-  * Compare names with .strip().lower() on both sides.
-  * One row per printing; sum Quantity across rows for a card total.
-  * Precon contents are NOT in this export. See ingest/precon.py.
+Encoded here so they cost time once:
+  * UTF-8 with a BOM — read with utf-8-sig.
+  * One row per printing; the same card appears on several rows.
+  * Scryfall ID is the best key when present; set code + collector number
+    next; the name is the last resort.
 """
 
+import csv
 from pathlib import Path
 
-from mtg.models import CollectionEntry
-
-ENCODING = "utf-8-sig"
+from mtg.models import Holding
 
 
-def load(csv_path: Path) -> list[CollectionEntry]:
-    """Parse a ManaBox export, resolving each row to a printing."""
-    raise NotImplementedError
+def _get(row: dict, *keys: str) -> str:
+    for k in keys:
+        if row.get(k):
+            return row[k].strip()
+    return ""
+
+
+def load(path: Path) -> list[Holding]:
+    out = []
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f):
+            name = _get(row, "Name", "name")
+            if not name:
+                continue
+            qty = int(_get(row, "Quantity", "quantity", "Count") or 1)
+            out.append(Holding(
+                name=name,
+                quantity=qty,
+                scryfall_id=_get(row, "Scryfall ID", "scryfall_id") or None,
+                set_code=(_get(row, "Set code", "Set Code", "set_code").upper() or None),
+                collector_number=_get(row, "Collector number", "Collector Number") or None,
+                foil=_get(row, "Foil", "foil").lower() in {"foil", "etched", "true", "yes"},
+            ))
+    return out

@@ -1,1 +1,1 @@
-"""Questions asked of the store."""
+"""Questions asked of decks, collections, and the catalog."""

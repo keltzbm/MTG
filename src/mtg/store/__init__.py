@@ -1,1 +1,25 @@
-"""DuckDB store. Single file, no server, analytical queries."""
+"""Card data lookups. Catalog is the interface; DuckCatalog the real one."""
+
+from typing import Protocol
+
+from mtg.models import Prices, Printing
+
+
+class Catalog(Protocol):
+    def resolve(self, name: str) -> str | None:
+        """Card name (full or front face, any case) -> oracle_id."""
+
+    def name(self, oracle_id: str) -> str: ...
+
+    def prices(self, oracle_id: str) -> Prices: ...
+
+    def printing(self, scryfall_id: str) -> Printing | None: ...
+
+    def printing_at(self, set_code: str, collector_number: str) -> Printing | None: ...
+
+    def printing_usd(self, scryfall_id: str) -> float | None: ...
+
+    def mtgo_name(self, oracle_id: str) -> str: ...
+
+    def is_basic(self, oracle_id: str) -> bool:
+        """Plains, Island, Swamp, Mountain, Forest, Wastes. Snow basics are not."""

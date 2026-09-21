@@ -1,43 +1,51 @@
 # mtg
 
-Personal Magic tooling: one source of truth for what I own, what I'm building,
-and what the gap costs. Renders into an Obsidian vault.
-
-Design and rationale: [DESIGN.md](DESIGN.md). Old-repo mapping:
-[MIGRATION.md](MIGRATION.md).
+What I own, what I'm building, what the gap costs — in paper and on MTGO —
+rendered into my Obsidian vault. Design: [DESIGN.md](DESIGN.md).
 
 ## Install
-
-Lives at `~/atelier/github/mtg`, beside the vault at `~/atelier/library`.
 
 ```bash
 cd ~/atelier/github/mtg
 uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
+mtg init
 ```
 
-Bulk data and the DuckDB file go to `$XDG_DATA_HOME/mtg` (default
-`~/.local/share/mtg`), **not** into the repo — the Scryfall default-cards bulk
-file is several hundred MB.
-
-## Use
+## First run
 
 ```bash
-mtg ingest scryfall                   # download + load bulk default cards
+mtg ingest scryfall                          # ~500 MB download, once a day at most
 mtg ingest manabox ~/Downloads/collection.csv
-mtg ingest precon M3C-tricky-terrain  # precon contents, not in the export
-
-mtg own decks/aesi-lands.txt          # have / need against real inventory
-mtg analyze mana decks/aesi-lands.txt  # color demand vs. supply, curve, land count
-mtg prices refresh                    # append snapshot to the vault price log
-
-mtg export obsidian --vault ~/atelier/library
+mtg sync --offline
 ```
+
+## Everyday
+
+```bash
+mtg sync                        # refresh prices, rewrite _generated/, append _log/
+mtg decks                       # deck notes the vault holds
+mtg own aesi-lands              # what's missing
+mtg own aesi-lands --all        # every card, with 🟩🟦🟥
+mtg price yshtola-spellslinger --budget-tix 500
+mtg export aesi-lands --to moxfield --pin owned -o ~/Downloads/aesi.txt
+mtg export izzet-murktide --to mtgo -o ~/Downloads/murktide.txt
+mtg export aesi-lands --to tcgplayer        # mass-entry list of the shortfall
+```
+
+A deck is named by its note's slug, or by a path to any `.md` or `.txt` list.
+
+## Where things live
+
+| What | Where |
+|---|---|
+| Config | `~/.config/mtg/config.toml` — vault path, sealed precons you own |
+| Card data, collection, sync state | `~/.local/share/mtg/` — outside the synced vault |
+| Precon lists | `precons/` in this repo |
+| Output | `tcg/mtg/_generated/` and `tcg/mtg/_log/` in the vault — nothing else |
 
 ## Invariants
 
-- `oracle_id` is the key. Never match on name.
-- Colors are emitted in WUBRG order everywhere.
-- The vault is a render target. The repo writes `library/tcg/mtg/_generated/` and
-  `library/tcg/mtg/_log/` only.
-- Nothing large or generated lives under `~/atelier/` except those two folders.
+- `oracle_id` is the key. Names are resolved once, at the edge; unmatched names are reported, never dropped.
+- Colors are WUBRG order everywhere.
+- The vault is a render target. Authored notes are read, never written.

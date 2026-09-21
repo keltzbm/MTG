@@ -1,9 +1,9 @@
 """Personal Magic tooling. See DESIGN.md.
 
-Invariants enforced across every module:
-  * oracle_id is the key. Never match on name.
+Invariants:
+  * oracle_id is the key. Names are resolved to it once, at the edge.
   * Colors are ordered WUBRG, never alphabetically.
-  * The vault is a render target; this package writes _generated/ and _log/ only.
+  * The vault is a render target; only _generated/ and _log/ are written.
 """
 
 __version__ = "0.2.0.dev0"

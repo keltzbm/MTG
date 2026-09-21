@@ -1,32 +1,24 @@
-# Migration from the old `keltzbm/MTG`
+# Migration from the original scripts
 
-The original scripts are preserved at tag `v0.1.0`. Read any of them
-without checking anything out: `git show v0.1.0:classes.py`
-
-The old repo is the specification, not the starting point. Nothing gets ported
-file-for-file; the domain knowledge below is lifted and the plumbing is
-rewritten.
+The original scripts are preserved at tag `v0.1.0`. Read any of them without
+checking anything out: `git show v0.1.0:classes.py`
 
 | Old | Fate | New home |
 |---|---|---|
-| `scrapeCards.py` | **Drop.** Scryfall bulk JSON replaces it. | `ingest/scryfall.py` |
-| `api.py` | **Drop** if it wraps the Scryfall REST API — bulk data replaces per-card calls. Keep anything that isn't Scryfall. | `ingest/` |
-| `prices.py` | **Mostly drop.** Prices ship in bulk data. Keep the snapshot-logging idea. | `ingest/scryfall.py`, `export/obsidian.py` |
-| `classes.py` → `colorArchetypes` | **Port.** Four-color names included, re-keyed to WUBRG. | `analysis/colors.py` |
-| `classes.py` → dict-as-object | **Drop.** Why `getattr` is everywhere. | `models/` |
-| `analysis.py` → `getDeckColors` | **Port and promote.** Demand vs. supply as a first-class mana check. | `analysis/mana.py` |
-| `analysis.py` → the rest | **Rewrite** behind CLI subcommands. | `analysis/`, `cli.py` |
-| `deckCreation.py` | **Rewrite** as list parsing + ownership diff. | `ingest/moxfield.py`, `analysis/ownership.py` |
-| `arenaCollection.py` | **Replace** with ManaBox ingest — paper collection is the source of truth now. Revisit only if Arena comes back. | `ingest/manabox.py` |
-| `scrapeDecks.py` | **Defer.** Milestone 5, MTGO decklists only. | `ingest/mtgo.py` (later) |
+| `scrapeCards.py` | Dropped — Scryfall bulk data | `ingest/scryfall.py` |
+| `api.py` | Dropped where it wrapped Scryfall's REST API | `ingest/scryfall.py` |
+| `prices.py` | Replaced — prices ship in bulk data, paper and MTGO | `analysis/pricing.py` |
+| `classes.py` → `colorArchetypes` | Ported, WUBRG re-keyed | `analysis/colors.py` |
+| `classes.py` → dict-as-object | Dropped | `models/` |
+| `analysis.py` → `getDeckColors` | To port: demand vs. supply | `analysis/mana.py` (stub) |
+| `deckCreation.py` | Rewritten as list parsing + ownership | `ingest/decklist.py`, `analysis/ownership.py` |
+| `arenaCollection.py` | Replaced by ManaBox ingest | `ingest/manabox.py` |
+| `scrapeDecks.py` | Deferred — milestone 5, MTGO lists only | — |
 
-## Known data gotchas, carried forward
+## Data gotchas, handled
 
-- ManaBox exports use a UTF-8 BOM — read with `encoding="utf-8-sig"`.
-- The `Name` column needs `.strip().lower()` on both sides of any comparison.
-- The same card appears on multiple rows (one per printing); sum `Quantity`.
-- **Precon contents are not in the collection export.** Ingest precon lists
-  separately or every card in a sealed precon reads as "need to buy."
-- Sorting colors alphabetically produces `BGU`; everything external says `UBG`.
-- The repo lives inside a synced vault. Never write cache, bulk data, or the
-  DuckDB file into the repo tree — use `~/.local/share/mtg`.
+- ManaBox exports have a UTF-8 BOM — `utf-8-sig`.
+- One row per printing — quantities are summed per `oracle_id`.
+- Sealed precon contents aren't in the export — `precons/` + config.
+- Alphabetical color sorting gives `BGU` — `wubrg_sort()`.
+- The repo sits beside a synced vault — card data lives in `~/.local/share/mtg`.
