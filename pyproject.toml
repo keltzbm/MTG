@@ -1,6 +1,6 @@
 [project]
 name = "mtg"
-version = "0.2.0.dev0"
+version = "0.2.0"
 description = "Collection, decks, paper and MTGO prices, rendered into an Obsidian vault"
 requires-python = ">=3.12"
 dependencies = [
