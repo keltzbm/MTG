@@ -4,6 +4,9 @@ import shutil
 from pathlib import Path
 from typing import Annotated
 
+import os
+import subprocess
+
 import typer
 
 from mtg import config, sync as syncmod, vault
@@ -268,21 +271,37 @@ PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+def _launchctl_reload(label: str, plist: Path, load: bool = True) -> None:
+    domain = f"gui/{os.getuid()}"
+    subprocess.run(["launchctl", "bootout", f"{domain}/{label}"], capture_output=True)
+    if load:
+        subprocess.run(["launchctl", "bootstrap", domain, str(plist)],
+                       check=True, capture_output=True, text=True)
+
+
 @app.command()
 def schedule(at: str = typer.Option("07:00", help="Daily time, HH:MM"), remove: bool = False) -> None:
-    """Write a macOS launchd job that runs `mtg sync` daily. Prints the command to enable it."""
+    """Install (or --remove) a macOS launchd job that runs `mtg sync` daily."""
     import sys
     label = "com.keltzbm.mtg-sync"
     plist = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
     if remove:
-        typer.echo(f"launchctl bootout gui/$(id -u) {plist} && rm {plist}")
+        _launchctl_reload(label, plist, load=False)
+        plist.unlink(missing_ok=True)
+        typer.echo(f"removed {label}")
         return
     hour, minute = (int(x) for x in at.split(":"))
     exe = Path(sys.argv[0]).resolve()
     log = config.data_dir() / "sync.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
     plist.parent.mkdir(parents=True, exist_ok=True)
     plist.write_text(PLIST.format(label=label, exe=exe, hour=hour, minute=minute, log=log))
-    typer.echo(f"wrote {plist}\nenable it with:\n  launchctl bootstrap gui/$(id -u) {plist}\nlog: {log}")
+    try:
+        _launchctl_reload(label, plist)
+    except subprocess.CalledProcessError as e:
+        typer.echo(f"wrote {plist} but launchctl bootstrap failed:\n  {e.stderr.strip()}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"loaded {label}: daily at {hour:02d}:{minute:02d}\nlog: {log}")
 
 
 if __name__ == "__main__":
