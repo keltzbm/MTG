@@ -1,8 +1,7 @@
 # Migration from the old `keltzbm/MTG`
 
-The old scripts move to `legacy/` on the rewrite branch so they're in the tree
-as reference while the new package is built, then get deleted once each row
-below is done.
+The original scripts are preserved at tag `v0.1.0`. Read any of them
+without checking anything out: `git show v0.1.0:classes.py`
 
 The old repo is the specification, not the starting point. Nothing gets ported
 file-for-file; the domain knowledge below is lifted and the plumbing is

@@ -6,6 +6,6 @@ Invariants enforced across every module:
   * The vault is a render target; this package writes _generated/ and _log/ only.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0.dev0"
 
 WUBRG = ("W", "U", "B", "R", "G")
