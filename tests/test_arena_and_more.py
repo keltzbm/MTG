@@ -22,7 +22,7 @@ def test_arena_text_and_csv_exports(tmp_path):
 def test_wildcards_by_rarity(cat):
     d = parse_text("1 Aesi, Tyrant of Gyre Strait\n1 Cyclonic Rift\n1 Sol Ring\n1 Fire // Ice\n")
     resolve_deck(d, cat)
-    wc = wildcards(diff(d, Counter({"o-sol": 1}), Counter(), cat), cat)
+    wc = wildcards(diff(d, Counter({"o-sol": 1}), cat), cat)
     assert wc == {"mythic": 1, "rare": 1, "uncommon": 0, "common": 0, "not on Arena": 1}
 
 

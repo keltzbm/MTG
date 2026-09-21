@@ -26,9 +26,9 @@ mtg sync --offline
 mtg sync                        # picks up a new ManaBox export from ~/Downloads, refreshes
                                 # prices, rewrites _generated/, appends _log/
 mtg decks                       # deck notes the vault holds
-mtg own aesi-lands              # 🟥 what's missing (default)
-mtg own aesi-lands -a           # to buy, then in precon boxes, then owned
-mtg own aesi-lands -s owned     # just what you have
+mtg own aesi-lands              # 🟥 what to buy (default); numbers are copies in the deck
+mtg own aesi-lands -a           # 🟥 buy, then 🟩 own
+mtg own aesi-lands -s own       # just what you have
 mtg own aesi-lands --arena      # against your Arena collection, with wildcard counts
 mtg price yshtola-spellslinger --budget-tix 500
 mtg export aesi-lands --to moxfield -o ~/Downloads/aesi.txt   # owned printings pinned
@@ -39,6 +39,15 @@ mtg ingest arena ~/Downloads/mtga_collection.txt              # text list or CSV
 ```
 
 A deck is named by its note's slug, or by a path to any `.md` or `.txt` list.
+
+## Keeping the vault current
+
+Every ingest resyncs the vault afterwards (`--no-sync` to skip). Beyond that:
+
+```bash
+mtg watch                       # resync on every deck-note save or new ManaBox export
+mtg schedule --at 07:00         # daily launchd job: fresh prices + full sync
+```
 
 ## Where things live
 

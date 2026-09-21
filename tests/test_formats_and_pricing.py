@@ -40,14 +40,14 @@ def test_mtgo_puts_commander_in_sideboard_and_fixes_split_names(cat):
 
 def test_tcgplayer_lists_only_shortfall(cat):
     d = _deck(cat)
-    rows = diff(d, Counter({"o-sol": 1}), Counter(), cat)
+    rows = diff(d, Counter({"o-sol": 1}), cat)
     lines = set(formats.tcgplayer(rows).strip().splitlines())
     assert lines == {"1 Aesi, Tyrant of Gyre Strait", "1 Cyclonic Rift", "1 Fire // Ice"}
 
 
 def test_prices_split_paper_to_buy_from_whole_deck_mtgo(cat):
     d = _deck(cat)
-    dp = price(diff(d, Counter({"o-sol": 1}), Counter(), cat), cat)
+    dp = price(diff(d, Counter({"o-sol": 1}), cat), cat)
     assert dp.usd_to_buy == 5.0 + 30.0 + 1.0
     assert dp.usd_total == 5.0 + 1.0 + 30.0 + 1.0 + 0.2
     assert dp.tix_total == round(0.3 + 0.05 + 2.0 + 0.1 + 0.02, 2)

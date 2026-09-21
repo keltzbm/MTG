@@ -19,11 +19,8 @@ class Inventory:
 
     @property
     def owned(self):
-        return counts([h for h in self.holdings if not h.source.startswith("precon:")])
-
-    @property
-    def in_precons(self):
-        return counts([h for h in self.holdings if h.source.startswith("precon:")])
+        """Everything you have: scanned cards plus any sealed precons in config."""
+        return counts(self.holdings)
 
 
 def inventory(collection_csv: Path, precon_names: list[str], precon_dir: Path, catalog: Catalog) -> Inventory:
@@ -48,7 +45,7 @@ class DeckReport:
 
 def analyse(deck: Deck, inv: Inventory, catalog: Catalog) -> DeckReport:
     missing = resolve_deck(deck, catalog)
-    rows = ownership.diff(deck, inv.owned, inv.in_precons, catalog)
+    rows = ownership.diff(deck, inv.owned, catalog)
     return DeckReport(deck, rows, pricing.price(rows, catalog), missing)
 
 

@@ -1,4 +1,7 @@
-"""Have / need. Milestone 1 — the thing needed twice before it existed."""
+"""Own / buy. Milestone 1 — the thing needed twice before it existed.
+
+Two states only. Sealed precons listed in config count as owned.
+"""
 
 from collections import Counter
 from dataclasses import dataclass
@@ -6,52 +9,49 @@ from dataclasses import dataclass
 from mtg.models import Deck
 from mtg.store import Catalog
 
-OWN, PRECON, BUY = "own", "precon", "buy"
-MARK = {OWN: "🟩", PRECON: "🟦", BUY: "🟥"}
+OWN, BUY = "own", "buy"
+MARK = {OWN: "🟩", BUY: "🟥"}
+RARITIES = ("mythic", "rare", "uncommon", "common")
 
 
 @dataclass
 class Row:
     oracle_id: str
     name: str
-    needed: int
-    owned: int
-    in_precon: int
+    needed: int     # copies the deck plays
+    owned: int      # copies you have, anywhere
 
     @property
     def status(self) -> str:
-        if self.owned >= self.needed:
-            return OWN
-        if self.owned + self.in_precon >= self.needed:
-            return PRECON
-        return BUY
+        return OWN if self.owned >= self.needed else BUY
 
     @property
     def shortfall(self) -> int:
-        return max(0, self.needed - self.owned - self.in_precon)
+        return max(0, self.needed - self.owned)
+
+    @property
+    def partial(self) -> bool:
+        return 0 < self.owned < self.needed
 
 
-def diff(deck: Deck, owned: Counter, precon: Counter, catalog: Catalog) -> list[Row]:
+def diff(deck: Deck, owned: Counter, catalog: Catalog) -> list[Row]:
     """Assumes resolve_deck() has run. Plain basics always count as owned."""
     needed: Counter = Counter()
     for e in deck.entries:
         if e.oracle_id:
             needed[e.oracle_id] += e.quantity
-    rows = []
-    for oid, n in needed.items():
-        have = n if catalog.is_basic(oid) else owned.get(oid, 0)
-        rows.append(Row(oid, catalog.name(oid), n, have, precon.get(oid, 0)))
-    return sorted(rows, key=lambda r: ({BUY: 0, PRECON: 1, OWN: 2}[r.status], r.name))
+    rows = [
+        Row(oid, catalog.name(oid), n, n if catalog.is_basic(oid) else owned.get(oid, 0))
+        for oid, n in needed.items()
+    ]
+    return sorted(rows, key=lambda r: (r.status != BUY, r.name))
 
 
 def summary(rows: list[Row]) -> dict[str, int]:
-    out = {OWN: 0, PRECON: 0, BUY: 0}
+    out = {OWN: 0, BUY: 0}
     for r in rows:
         out[r.status] += 1
     return out
-
-
-RARITIES = ("mythic", "rare", "uncommon", "common")
 
 
 def wildcards(rows: list[Row], catalog: Catalog) -> dict[str, int]:

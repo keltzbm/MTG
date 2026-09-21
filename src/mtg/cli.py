@@ -40,10 +40,15 @@ def init() -> None:
 
 
 @ingest_app.command("scryfall")
-def ingest_scryfall(force: bool = typer.Option(False, help="Download even if under a day old")) -> None:
+def ingest_scryfall(
+    force: bool = typer.Option(False, help="Download even if under a day old"),
+    no_sync: bool = typer.Option(False, "--no-sync", help="Don't resync the vault afterwards"),
+) -> None:
     """Download Scryfall's bulk card data and load it."""
     from mtg.ingest import scryfall
     typer.echo(scryfall.refresh(force=force))
+    if not no_sync:
+        _run_sync(offline=True)
 
 
 def _copy_manabox(src: Path) -> Path:
@@ -54,13 +59,18 @@ def _copy_manabox(src: Path) -> Path:
 
 
 @ingest_app.command("manabox")
-def ingest_manabox(csv_path: Path = typer.Argument(None, help="Default: newest ManaBox*.csv in ~/Downloads")) -> None:
+def ingest_manabox(
+    csv_path: Path = typer.Argument(None, help="Default: newest ManaBox*.csv in ~/Downloads"),
+    no_sync: bool = typer.Option(False, "--no-sync", help="Don't resync the vault afterwards"),
+) -> None:
     """Copy a ManaBox collection export into the data folder."""
     from mtg.ingest import manabox
     src = csv_path or manabox.newest_export(config.load().downloads)
     if src is None:
         raise typer.BadParameter("no ManaBox*.csv in ~/Downloads — pass a path")
     typer.echo(f"{src.name} -> {_copy_manabox(src)}")
+    if not no_sync:
+        _run_sync(offline=True)
 
 
 @ingest_app.command("arena")
@@ -82,18 +92,18 @@ def decks() -> None:
         typer.echo(f"{d.slug:<28} {d.meta.get('format', ''):<10} {d.meta.get('status', ''):<10} {d.count()} cards")
 
 
-SHOW = ("need", "owned", "precon", "all")
+SHOW = ("buy", "own", "all")
 
 
 @app.command()
 def own(
     deck: DeckRef,
-    show: str = typer.Option("need", "--show", "-s", help="need | owned | precon | all"),
+    show: str = typer.Option("buy", "--show", "-s", help="buy | own | all"),
     all_cards: bool = typer.Option(False, "--all", "-a", help="Same as --show all"),
     on_arena: bool = typer.Option(False, "--arena", help="Check against your Arena collection instead of paper"),
 ) -> None:
-    """Have / need. 🟥 how many to buy · 🟦 covered by a sealed precon · 🟩 how many you own."""
-    from mtg.analysis.ownership import BUY, MARK, OWN, PRECON, summary, wildcards
+    """What to buy for a deck. Numbers are copies in the deck. -a adds what you own."""
+    from mtg.analysis.ownership import BUY, MARK, OWN, summary, wildcards
     show = "all" if all_cards else show
     if show not in SHOW:
         raise typer.BadParameter(f"--show must be one of {', '.join(SHOW)}")
@@ -106,30 +116,27 @@ def own(
     else:
         inv = syncmod.inventory(cfg.collection_csv, cfg.precons, cfg.precon_dir, cat)
     rep = syncmod.analyse(vault.find(cfg.mtg_dir, deck), inv, cat)
+    buy_word = "Craft" if on_arena else "Buy"
 
-    sections = [
-        (BUY, "To buy" if not on_arena else "To craft", lambda r: r.shortfall),
-        (PRECON, "In precon boxes", lambda r: r.needed),
-        (OWN, "Owned", lambda r: r.owned),
-    ]
-    wanted = {"need": {BUY}, "owned": {OWN}, "precon": {PRECON}, "all": {BUY, PRECON, OWN}}[show]
-    for status, title, number in sections:
+    wanted = {"buy": [BUY], "own": [OWN], "all": [BUY, OWN]}[show]
+    for status in wanted:
         rows = [r for r in rep.rows if r.status == status]
-        if status not in wanted or not rows:
+        if not rows:
             continue
         if len(wanted) > 1:
-            typer.secho(f"\n{title} ({len(rows)})", bold=True)
+            typer.secho(f"\n{buy_word if status == BUY else 'Own'} ({len(rows)})", bold=True)
         for r in rows:
-            typer.echo(f"{MARK[status]} {number(r):>2}  {r.name}")
+            n = r.shortfall if status == BUY else r.needed
+            extra = f"  (own {r.owned} of {r.needed})" if status == BUY and r.partial else ""
+            typer.echo(f"{MARK[status]} {n:>2}  {r.name}{extra}")
 
     s = summary(rep.rows)
-    typer.echo(f"\n{MARK[OWN]} {s[OWN]} owned · {MARK[PRECON]} {s[PRECON]} in precon boxes · {MARK[BUY]} {s[BUY]} to "
-               + ("craft" if on_arena else "buy"))
+    typer.echo(f"\n{MARK[OWN]} {s[OWN]} own · {MARK[BUY]} {s[BUY]} {buy_word.lower()}")
     if on_arena:
         wc = wildcards(rep.rows, cat)
         typer.echo("wildcards: " + " · ".join(f"{n} {k}" for k, n in wc.items() if n))
-    elif show == "need" and s[OWN]:
-        typer.echo("(--all or -a to list the owned cards too)")
+    elif show == "buy" and s[OWN]:
+        typer.echo("(-a to list what you own too)")
     if rep.unresolved:
         typer.echo(f"unmatched: {', '.join(rep.unresolved)}", err=True)
 
@@ -184,14 +191,13 @@ def export_deck(
             typer.echo(f"{d.slug}: unmatched (left as written): {', '.join(rep.unresolved)}", err=True)
 
 
-@app.command("sync")
-def sync_cmd(offline: bool = typer.Option(False, help="Skip the Scryfall refresh")) -> None:
-    """Refresh prices, then rewrite the vault's _generated/ and append to _log/."""
+def _run_sync(offline: bool = True) -> None:
+    """Everything the data affects: collection pickup, prices, generated notes, logs."""
+    from mtg.ingest import manabox
+    cfg0 = config.load()
     if not offline:
         from mtg.ingest import scryfall
         typer.echo(scryfall.refresh())
-    from mtg.ingest import manabox
-    cfg0 = config.load()
     newest = manabox.newest_export(cfg0.downloads)
     stored = cfg0.collection_csv
     if newest and (not stored.exists() or newest.stat().st_mtime > stored.stat().st_mtime):
@@ -207,6 +213,76 @@ def sync_cmd(offline: bool = typer.Option(False, help="Skip the Scryfall refresh
         typer.echo(f"removed stale generated notes: {', '.join(res.removed)}")
     for w in res.warnings:
         typer.echo(f"  ! {w}", err=True)
+
+
+@app.command("sync")
+def sync_cmd(offline: bool = typer.Option(False, help="Skip the Scryfall refresh")) -> None:
+    """Refresh prices, pick up a new ManaBox export, rewrite _generated/, append _log/."""
+    _run_sync(offline=offline)
+
+
+def _watched(cfg: config.Config) -> dict[str, float]:
+    """Everything whose change should trigger a resync, with its mtime."""
+    from mtg.ingest import manabox
+    paths = [p for p in vault.deck_notes(cfg.mtg_dir)]
+    paths += [cfg.collection_csv, cfg.arena_list, config.config_path()]
+    newest = manabox.newest_export(cfg.downloads)
+    if newest:
+        paths.append(newest)
+    return {str(p): p.stat().st_mtime for p in paths if p.exists()}
+
+
+@app.command()
+def watch(interval: float = typer.Option(5.0, help="Seconds between checks")) -> None:
+    """Resync whenever a deck note is saved or a new ManaBox export lands. Ctrl-C to stop."""
+    import time
+    from datetime import datetime
+    cfg = config.load()
+    typer.echo(f"watching {cfg.mtg_dir} and ~/Downloads — Ctrl-C to stop")
+    _run_sync(offline=True)
+    seen = _watched(cfg)
+    try:
+        while True:
+            time.sleep(interval)
+            now = _watched(cfg)
+            if now != seen:
+                changed = sorted(Path(p).name for p in set(now) ^ set(seen) | {p for p in now if seen.get(p) != now[p]})
+                typer.echo(f"\n{datetime.now():%H:%M:%S} changed: {', '.join(changed)}")
+                _run_sync(offline=True)
+                seen = _watched(cfg)
+    except KeyboardInterrupt:
+        typer.echo("\nstopped")
+
+
+PLIST = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>{label}</string>
+  <key>ProgramArguments</key><array><string>{exe}</string><string>sync</string></array>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>{hour}</integer><key>Minute</key><integer>{minute}</integer></dict>
+  <key>StandardOutPath</key><string>{log}</string>
+  <key>StandardErrorPath</key><string>{log}</string>
+</dict>
+</plist>
+"""
+
+
+@app.command()
+def schedule(at: str = typer.Option("07:00", help="Daily time, HH:MM"), remove: bool = False) -> None:
+    """Write a macOS launchd job that runs `mtg sync` daily. Prints the command to enable it."""
+    import sys
+    label = "com.keltzbm.mtg-sync"
+    plist = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
+    if remove:
+        typer.echo(f"launchctl bootout gui/$(id -u) {plist} && rm {plist}")
+        return
+    hour, minute = (int(x) for x in at.split(":"))
+    exe = Path(sys.argv[0]).resolve()
+    log = config.data_dir() / "sync.log"
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_text(PLIST.format(label=label, exe=exe, hour=hour, minute=minute, log=log))
+    typer.echo(f"wrote {plist}\nenable it with:\n  launchctl bootstrap gui/$(id -u) {plist}\nlog: {log}")
 
 
 if __name__ == "__main__":

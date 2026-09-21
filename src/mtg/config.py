@@ -1,7 +1,7 @@
 """Settings from $XDG_CONFIG_HOME/mtg/config.toml, with sensible defaults.
 
     vault   = "~/atelier/library"
-    precons = ["M3C-tricky-terrain", "FIC-scions-spellcraft"]
+    precons = []
 
 Precons listed here are sealed boxes you own whose cards are NOT in the
 ManaBox export. Anything already scanned into ManaBox should not be listed.
@@ -35,9 +35,10 @@ DEFAULT_CONFIG = """\
 # mtg configuration
 vault = "~/atelier/library"
 
-# Sealed precons you own whose cards aren't in your ManaBox export.
-# Names match files in the repo's precons/ folder.
-precons = ["M3C-tricky-terrain", "FIC-scions-spellcraft"]
+# Sealed precons you own whose cards AREN'T scanned into ManaBox. They count
+# as owned. Leave empty once a precon is scanned, or it's counted twice.
+# Names match files in the repo's precons/ folder, e.g. "M3C-tricky-terrain".
+precons = []
 """
 
 
