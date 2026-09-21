@@ -2,6 +2,7 @@
 
     moxfield   Commander / Deck sections, "1 Name (SET) 123" when pinned
     manabox    one card per line, "1 Name (SET) 123" when pinned
+    arena      MTG Arena import: Commander / Deck / Sideboard, names only
     mtgo       .txt: main deck, blank line, sideboard — the commander goes
                in the sideboard, which is how MTGO reads Commander lists
     tcgplayer  mass entry for what's missing: only cards you still need
@@ -15,7 +16,7 @@ from mtg.analysis.ownership import BUY, Row
 from mtg.models import Deck, DeckEntry, Holding
 from mtg.store import Catalog
 
-FORMATS = ("moxfield", "manabox", "mtgo", "tcgplayer")
+FORMATS = ("moxfield", "manabox", "mtgo", "arena", "tcgplayer")
 
 
 def owned_printings(holdings: list[Holding]) -> dict[str, Holding]:
@@ -69,6 +70,10 @@ def mtgo(deck: Deck, catalog: Catalog | None = None, pins: dict | None = None) -
     return "\n".join(main + ([""] + side if side else [])) + "\n"
 
 
+def arena(deck: Deck, catalog: Catalog | None = None, pins: dict | None = None) -> str:
+    return moxfield(deck, catalog, None)
+
+
 def tcgplayer(rows: list[Row]) -> str:
     return "\n".join(f"{r.shortfall} {r.name}" for r in rows if r.status == BUY) + "\n"
 
@@ -76,4 +81,4 @@ def tcgplayer(rows: list[Row]) -> str:
 def render(fmt: str, deck: Deck, rows: list[Row], catalog: Catalog | None, pins: dict | None) -> str:
     if fmt == "tcgplayer":
         return tcgplayer(rows)
-    return {"moxfield": moxfield, "manabox": manabox, "mtgo": mtgo}[fmt](deck, catalog, pins)
+    return {"moxfield": moxfield, "manabox": manabox, "mtgo": mtgo, "arena": arena}[fmt](deck, catalog, pins)

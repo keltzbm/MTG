@@ -55,6 +55,14 @@ class Config:
         return data_dir() / "collection.csv"
 
     @property
+    def arena_list(self) -> Path:
+        return data_dir() / "arena-collection.txt"
+
+    @property
+    def downloads(self) -> Path:
+        return Path.home() / "Downloads"
+
+    @property
     def precon_dir(self) -> Path:
         return REPO_ROOT / "precons"
 

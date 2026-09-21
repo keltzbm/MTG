@@ -161,7 +161,7 @@ def prune(gen_dir: Path, keep: set[str]) -> list[str]:
     """_generated/ is repo-owned: remove notes this sync didn't produce."""
     removed = []
     for p in gen_dir.glob("*.md"):
-        if p.name not in keep:
+        if p.name not in keep and p.name != "README.md":
             p.unlink()
             removed.append(p.name)
     return removed

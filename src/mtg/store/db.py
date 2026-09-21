@@ -62,9 +62,29 @@ class DuckCatalog:
         """).fetchall()
         return {r[0]: (r[1], r[2], r[3], r[4]) for r in rows}
 
+    @cached_property
+    def _arena(self) -> dict[str, str]:
+        order = "CASE rarity WHEN 'common' THEN 0 WHEN 'uncommon' THEN 1 WHEN 'rare' THEN 2 ELSE 3 END"
+        try:
+            rows = self.con.execute(f"""
+                SELECT oracle_id, arg_min(rarity, {order})
+                FROM printings
+                WHERE oracle_id IS NOT NULL AND list_contains(games, 'arena')
+                GROUP BY oracle_id
+            """).fetchall()
+        except Exception:
+            return {}   # card data loaded before rarity was stored — re-run ingest
+        return dict(rows)
+
+    def arena_rarity(self, oracle_id: str) -> str | None:
+        r = self._arena.get(oracle_id)
+        return "mythic" if r in {"mythic", "special", "bonus"} else r
+
     def resolve(self, name: str) -> str | None:
         key = name.strip().lower()
         exact, front = self._names
+        if key.startswith("a-"):  # Arena rebalanced cards, "A-Name"
+            key = key[2:]
         return exact.get(key) or front.get(key) or front.get(key.split(" // ")[0])
 
     def name(self, oracle_id: str) -> str:

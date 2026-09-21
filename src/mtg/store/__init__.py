@@ -21,5 +21,8 @@ class Catalog(Protocol):
 
     def mtgo_name(self, oracle_id: str) -> str: ...
 
+    def arena_rarity(self, oracle_id: str) -> str | None:
+        """Lowest rarity the card has on Arena — the wildcard it costs — or None if not on Arena."""
+
     def is_basic(self, oracle_id: str) -> bool:
         """Plains, Island, Swamp, Mountain, Forest, Wastes. Snow basics are not."""

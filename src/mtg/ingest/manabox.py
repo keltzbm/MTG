@@ -37,3 +37,9 @@ def load(path: Path) -> list[Holding]:
                 foil=_get(row, "Foil", "foil").lower() in {"foil", "etched", "true", "yes"},
             ))
     return out
+
+
+def newest_export(folder: Path) -> Path | None:
+    """Most recent ManaBox export in a folder (ManaBox names them ManaBox_*.csv)."""
+    found = sorted(folder.glob("ManaBox*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return found[0] if found else None

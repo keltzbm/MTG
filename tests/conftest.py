@@ -54,6 +54,9 @@ class FakeCatalog:
             return name.replace(" // ", "/") if layout == "split" else name.split(" // ")[0]
         return name
 
+    def arena_rarity(self, oid):
+        return {"o-sol": "uncommon", "o-rift": "mythic", "o-aesi": "rare"}.get(oid)
+
     def is_basic(self, oid):
         return CARDS[oid][0] in {"Forest", "Island", "Plains", "Swamp", "Mountain", "Wastes"}
 

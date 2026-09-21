@@ -23,14 +23,19 @@ mtg sync --offline
 ## Everyday
 
 ```bash
-mtg sync                        # refresh prices, rewrite _generated/, append _log/
+mtg sync                        # picks up a new ManaBox export from ~/Downloads, refreshes
+                                # prices, rewrites _generated/, appends _log/
 mtg decks                       # deck notes the vault holds
-mtg own aesi-lands              # what's missing
-mtg own aesi-lands --all        # every card, with 🟩🟦🟥
+mtg own aesi-lands              # 🟥 what's missing (default)
+mtg own aesi-lands -a           # to buy, then in precon boxes, then owned
+mtg own aesi-lands -s owned     # just what you have
+mtg own aesi-lands --arena      # against your Arena collection, with wildcard counts
 mtg price yshtola-spellslinger --budget-tix 500
-mtg export aesi-lands --to moxfield --pin owned -o ~/Downloads/aesi.txt
-mtg export izzet-murktide --to mtgo -o ~/Downloads/murktide.txt
+mtg export aesi-lands --to moxfield -o ~/Downloads/aesi.txt   # owned printings pinned
+mtg export all --to manabox -o ~/Downloads/mtg-exports        # every deck, one file each
+mtg export izzet-murktide --to mtgo
 mtg export aesi-lands --to tcgplayer        # mass-entry list of the shortfall
+mtg ingest arena ~/Downloads/mtga_collection.txt              # text list or CSV
 ```
 
 A deck is named by its note's slug, or by a path to any `.md` or `.txt` list.

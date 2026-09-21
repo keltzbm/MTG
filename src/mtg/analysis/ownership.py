@@ -49,3 +49,15 @@ def summary(rows: list[Row]) -> dict[str, int]:
     for r in rows:
         out[r.status] += 1
     return out
+
+
+RARITIES = ("mythic", "rare", "uncommon", "common")
+
+
+def wildcards(rows: list[Row], catalog: Catalog) -> dict[str, int]:
+    """Arena wildcards needed for the shortfall, by rarity; "not on Arena" for the rest."""
+    out = {r: 0 for r in RARITIES} | {"not on Arena": 0}
+    for r in rows:
+        if r.status == BUY:
+            out[catalog.arena_rarity(r.oracle_id) or "not on Arena"] += r.shortfall
+    return out

@@ -7,7 +7,7 @@ from mtg import vault
 from mtg.analysis import ownership, pricing
 from mtg.analysis.resolve import counts, resolve_deck, resolve_holdings
 from mtg.export import formats, obsidian
-from mtg.ingest import manabox, precon
+from mtg.ingest import arena, manabox, precon
 from mtg.models import Deck, Holding
 from mtg.store import Catalog
 
@@ -19,7 +19,7 @@ class Inventory:
 
     @property
     def owned(self):
-        return counts([h for h in self.holdings if h.source == "manabox"])
+        return counts([h for h in self.holdings if not h.source.startswith("precon:")])
 
     @property
     def in_precons(self):
@@ -30,6 +30,11 @@ def inventory(collection_csv: Path, precon_names: list[str], precon_dir: Path, c
     holdings = manabox.load(collection_csv) if collection_csv.exists() else []
     for name in precon_names:
         holdings += precon.load(name, precon_dir)
+    return Inventory(holdings, resolve_holdings(holdings, catalog))
+
+
+def arena_inventory(arena_list: Path, catalog: Catalog) -> Inventory:
+    holdings = arena.load(arena_list) if arena_list.exists() else []
     return Inventory(holdings, resolve_holdings(holdings, catalog))
 
 
@@ -68,6 +73,7 @@ def run(mtg_dir: Path, inv: Inventory, catalog: Catalog, today: str | None = Non
         res.decks.append(deck.slug)
         imports = {
             "Moxfield import — owned printings pinned": formats.moxfield(deck, catalog, pins),
+            "ManaBox import — owned printings pinned": formats.manabox(deck, catalog, pins),
             "MTGO import": formats.mtgo(deck, catalog),
         }
         text = obsidian.deck_data(deck, rep.rows, rep.price, rep.unresolved, today, imports)
