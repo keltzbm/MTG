@@ -6,7 +6,7 @@ from pathlib import Path
 from mtg import vault
 from mtg.analysis import ownership, pricing
 from mtg.analysis.resolve import counts, resolve_deck, resolve_holdings
-from mtg.export import obsidian
+from mtg.export import formats, obsidian
 from mtg.ingest import manabox, precon
 from mtg.models import Deck, Holding
 from mtg.store import Catalog
@@ -53,6 +53,7 @@ class SyncResult:
     changed_notes: int = 0
     versions: list[str] = field(default_factory=list)
     prices_logged: int = 0
+    removed: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -60,16 +61,24 @@ def run(mtg_dir: Path, inv: Inventory, catalog: Catalog, today: str | None = Non
     today = today or obsidian.today()
     gen, log = mtg_dir / "_generated", mtg_dir / "_log"
     res = SyncResult()
+    pins = formats.owned_printings(inv.holdings)
+    keep = {"collection-summary.md"}
     for deck in vault.decks(mtg_dir):
         rep = analyse(deck, inv, catalog)
         res.decks.append(deck.slug)
-        text = obsidian.deck_data(deck, rep.rows, rep.price, rep.unresolved, today)
+        imports = {
+            "Moxfield import — owned printings pinned": formats.moxfield(deck, catalog, pins),
+            "MTGO import": formats.mtgo(deck, catalog),
+        }
+        text = obsidian.deck_data(deck, rep.rows, rep.price, rep.unresolved, today, imports)
         res.changed_notes += obsidian.write_deck(gen, deck, text)
+        keep.add(f"{deck.slug}-data.md")
         if obsidian.append_version(log, deck, catalog, today):
             res.versions.append(deck.slug)
         if rep.unresolved:
             res.warnings.append(f"{deck.slug}: unmatched {', '.join(rep.unresolved)}")
     res.changed_notes += obsidian.write_summary(gen, obsidian.collection_summary(inv.holdings, catalog, today))
+    res.removed = obsidian.prune(gen, keep)
     buys = []
     for name in vault.buy_cards(mtg_dir.parent):
         oid = catalog.resolve(name)

@@ -118,9 +118,27 @@ def load(bulk_file: Path) -> int:
             # Scryfall added a field whose shape clashes with the explicit
             # schema — fall back to full inference (slower, same result).
             _create(con, inferred)
+        _fold_reversibles(con)
         return con.execute("SELECT count(*) FROM printings").fetchone()[0]
     finally:
         con.close()
+
+
+def _fold_reversibles(con: duckdb.DuckDBPyConnection) -> None:
+    """Secret Lair reversible cards are listed as "Sol Ring // Sol Ring" with
+    their own oracle id. Point them at the real card, so a reversible copy in
+    the collection counts as owning the card and prices merge."""
+    con.execute("""
+        UPDATE printings AS p
+        SET oracle_id = n.oracle_id, name = n.name, name_lc = n.name_lc, front_lc = n.front_lc
+        FROM (
+            SELECT DISTINCT ON (name_lc) name_lc, name, front_lc, oracle_id
+            FROM printings
+            WHERE oracle_id IS NOT NULL AND name_lc NOT LIKE '% // %'
+            ORDER BY name_lc, released_at
+        ) AS n
+        WHERE p.name_lc = n.name_lc || ' // ' || n.name_lc
+    """)
 
 
 def _create(con: duckdb.DuckDBPyConnection, source: str) -> None:

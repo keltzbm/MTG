@@ -8,3 +8,6 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# ad-hoc exports (mtg export -o out/...)
+out/

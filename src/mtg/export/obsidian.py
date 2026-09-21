@@ -1,11 +1,12 @@
 """Write the vault's machine zones. Nothing else in the vault is touched.
 
-    tcg/mtg/_generated/<deck>.data.md    regenerated wholesale every sync
+    tcg/mtg/_generated/<deck>-data.md    regenerated every sync; stale ones removed
     tcg/mtg/_generated/collection-summary.md
     tcg/mtg/_log/prices.md               append-only, one snapshot per day
-    tcg/mtg/_log/<deck>.versions.md      append-only, only when a list changes
+    tcg/mtg/_log/<deck>-versions.md      append-only, only when a list changes
 
-Authored notes pull generated ones in with ![[aesi-lands.data]].
+Authored notes pull generated ones in with ![[aesi-lands-data]]. No dots in
+generated names: Obsidian reads "aesi-lands.data" as a ".data" file.
 """
 
 import hashlib
@@ -38,12 +39,13 @@ def _write(path: Path, text: str) -> bool:
     return True
 
 
-def deck_data(deck: Deck, rows: list[Row], dp: DeckPrice, unresolved: list[str], today: str) -> str:
+def deck_data(deck: Deck, rows: list[Row], dp: DeckPrice, unresolved: list[str], today: str,
+              imports: dict[str, str] | None = None) -> str:
     s = summary(rows)
     buy = [(r, l) for r, l in zip(rows, dp.lines) if r.status == BUY]
     out = [
         "---",
-        f"title: {deck.slug}.data",
+        f"title: {deck.slug}-data",
         "type: generated",
         f"deck: {deck.slug}",
         f"generated: {today}",
@@ -61,14 +63,16 @@ def deck_data(deck: Deck, rows: list[Row], dp: DeckPrice, unresolved: list[str],
         "",
     ]
     if buy:
-        out += ["## To buy", "", "| Card | Need | Paper | MTGO |", "|---|---|---|---|"]
+        out += ["## To buy", "", "| Need | Card | Paper | MTGO |", "|---|---|---|---|"]
         for r, l in sorted(buy, key=lambda x: -(x[1].usd or 0)):
-            out.append(f"| [[{r.name}]] | {r.shortfall} | {_money(l.usd)} | {_tix(l.tix)} |")
+            out.append(f"| {MARK[BUY]} {r.shortfall} | [[{r.name}]] | {_money(l.usd)} | {_tix(l.tix)} |")
         out.append("")
     if dp.missing_on_mtgo:
         out += ["## Not on MTGO", "", ", ".join(f"[[{n}]]" for n in dp.missing_on_mtgo), ""]
     if unresolved:
         out += ["> [!bug] Names that didn't match any card", "> " + ", ".join(unresolved), ""]
+    for title, text in (imports or {}).items():
+        out += [f"## {title}", "", "```", text.rstrip(), "```", ""]
     return "\n".join(out)
 
 
@@ -118,6 +122,9 @@ def _state_path() -> Path:
 
 def append_version(log_dir: Path, deck: Deck, catalog: Catalog, today: str) -> bool:
     """Append a +/- diff when a deck's list changed since the last sync."""
+    legacy = log_dir / f"{deck.slug}.versions.md"
+    if legacy.exists() and not (log_dir / f"{deck.slug}-versions.md").exists():
+        legacy.rename(log_dir / f"{deck.slug}-versions.md")
     cards = Counter()
     for e in deck.entries:
         cards[catalog.name(e.oracle_id) if e.oracle_id else e.name] += e.quantity
@@ -126,10 +133,10 @@ def append_version(log_dir: Path, deck: Deck, catalog: Catalog, today: str) -> b
     prev = state.get(deck.slug)
     if prev and prev["hash"] == digest:
         return False
-    log = log_dir / f"{deck.slug}.versions.md"
+    log = log_dir / f"{deck.slug}-versions.md"
     log_dir.mkdir(parents=True, exist_ok=True)
     if not log.exists():
-        log.write_text(f"---\ntitle: {deck.slug}.versions\ntype: log\ndeck: {deck.slug}\n---\n\n"
+        log.write_text(f"---\ntitle: {deck.slug}-versions\ntype: log\ndeck: {deck.slug}\n---\n\n"
                        "Appended by `mtg sync` when the list changes. Never edit.\n", encoding="utf-8")
     with log.open("a", encoding="utf-8") as f:
         if prev is None:
@@ -147,7 +154,17 @@ def append_version(log_dir: Path, deck: Deck, catalog: Catalog, today: str) -> b
 
 
 def write_deck(gen_dir: Path, deck: Deck, text: str) -> bool:
-    return _write(gen_dir / f"{deck.slug}.data.md", text)
+    return _write(gen_dir / f"{deck.slug}-data.md", text)
+
+
+def prune(gen_dir: Path, keep: set[str]) -> list[str]:
+    """_generated/ is repo-owned: remove notes this sync didn't produce."""
+    removed = []
+    for p in gen_dir.glob("*.md"):
+        if p.name not in keep:
+            p.unlink()
+            removed.append(p.name)
+    return removed
 
 
 def write_summary(gen_dir: Path, text: str) -> bool:

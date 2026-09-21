@@ -63,18 +63,26 @@ def decks() -> None:
         typer.echo(f"{d.slug:<28} {d.meta.get('format', ''):<10} {d.meta.get('status', ''):<10} {d.count()} cards")
 
 
+def _badge(n: int, color: str) -> str:
+    return typer.style(f" {n:>2} ", fg="white", bg=color, bold=True)
+
+
 @app.command()
 def own(deck: DeckRef, all_cards: bool = typer.Option(False, "--all", help="Show owned cards too")) -> None:
-    """Have / need against your real collection and sealed precons."""
+    """Have / need. Red = how many to buy · blue = covered by a sealed precon · green = how many you own."""
     cfg, cat, inv = _setup()
     rep = syncmod.analyse(vault.find(cfg.mtg_dir, deck), inv, cat)
-    from mtg.analysis.ownership import BUY, MARK, summary
+    from mtg.analysis.ownership import BUY, OWN, PRECON, summary
     for r in rep.rows:
-        if all_cards or r.status == BUY:
-            need = f"need {r.shortfall}" if r.status == BUY else ""
-            typer.echo(f"{MARK[r.status]} {r.name:<40} {need}")
+        if r.status == BUY:
+            typer.echo(f"{_badge(r.shortfall, 'red')} {r.name}")
+        elif all_cards and r.status == PRECON:
+            typer.echo(f"{_badge(r.needed, 'blue')} {r.name}")
+        elif all_cards and r.status == OWN:
+            typer.echo(f"{_badge(r.owned, 'green')} {r.name}")
     s = summary(rep.rows)
-    typer.echo(f"\n{s['own']} owned · {s['precon']} in precon boxes · {s['buy']} to buy")
+    typer.echo(f"\n{_badge(s[OWN], 'green')} owned  {_badge(s[PRECON], 'blue')} in precon boxes  "
+               f"{_badge(s[BUY], 'red')} to buy")
     if rep.unresolved:
         typer.echo(f"unmatched: {', '.join(rep.unresolved)}", err=True)
 
@@ -131,6 +139,8 @@ def sync_cmd(offline: bool = typer.Option(False, help="Skip the Scryfall refresh
     res = syncmod.run(cfg.mtg_dir, inv, cat)
     typer.echo(f"{len(res.decks)} decks · {res.changed_notes} notes updated · "
                f"{res.prices_logged} prices logged · versions changed: {', '.join(res.versions) or 'none'}")
+    if res.removed:
+        typer.echo(f"removed stale generated notes: {', '.join(res.removed)}")
     for w in res.warnings:
         typer.echo(f"  ! {w}", err=True)
 

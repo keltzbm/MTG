@@ -32,21 +32,27 @@ class DuckCatalog:
         self.con = con
 
     @cached_property
-    def _names(self) -> dict[str, str]:
-        rows = self.con.execute(
-            "SELECT DISTINCT name_lc, front_lc, oracle_id FROM printings WHERE oracle_id IS NOT NULL"
-        ).fetchall()
-        out: dict[str, str] = {}
-        for full, front, oid in rows:
-            out.setdefault(full, oid)
-            out.setdefault(front, oid)
-        return out
+    def _names(self) -> tuple[dict[str, str], dict[str, str]]:
+        """(exact full names, front faces) -> oracle_id. Where two cards share
+        a name, the one with more printings wins — never a reprint oddity."""
+        rows = self.con.execute("""
+            SELECT name_lc, front_lc, oracle_id, count(*) AS n
+            FROM printings WHERE oracle_id IS NOT NULL
+            GROUP BY name_lc, front_lc, oracle_id
+            ORDER BY n DESC
+        """).fetchall()
+        exact: dict[str, str] = {}
+        front: dict[str, str] = {}
+        for full, fr, oid, _ in rows:
+            exact.setdefault(full, oid)
+            front.setdefault(fr, oid)
+        return exact, front
 
     @cached_property
     def _cards(self) -> dict[str, tuple[str, str, float | None, float | None]]:
         rows = self.con.execute("""
             SELECT oracle_id,
-                   arg_min(name, released_at)                         AS name,
+                   arg_min(name, length(name))                        AS name,
                    arg_min(layout, released_at)                       AS layout,
                    min(usd) FILTER (WHERE NOT coalesce(digital, false)) AS usd,
                    min(tix)                                           AS tix
@@ -58,7 +64,8 @@ class DuckCatalog:
 
     def resolve(self, name: str) -> str | None:
         key = name.strip().lower()
-        return self._names.get(key) or self._names.get(key.split(" // ")[0])
+        exact, front = self._names
+        return exact.get(key) or front.get(key) or front.get(key.split(" // ")[0])
 
     def name(self, oracle_id: str) -> str:
         return self._cards.get(oracle_id, (oracle_id,))[0]
