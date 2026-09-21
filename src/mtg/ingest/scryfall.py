@@ -3,6 +3,10 @@
 Published daily; carries oracle ids, legalities, and prices — including
 MTGO tix (Scryfall sources those from Cardhoarder). No scraping, no rate
 limits. Scryfall asks every client to send a User-Agent and Accept header.
+
+Since 2026-07-20 bulk files are gzipped JSON Lines only, linked from
+`jsonl_download_uri`. The old `download_uri` (one big JSON array) is gone;
+it's still read if present so an older cached file keeps working.
 """
 
 import json
@@ -69,15 +73,33 @@ def is_stale(max_age_hours: float = 24) -> bool:
     return (datetime.now(timezone.utc) - loaded).total_seconds() > max_age_hours * 3600
 
 
+def download_url(info: dict) -> tuple[str, str]:
+    """(url, local filename) — JSONL.gz now, the old JSON array as a fallback."""
+    if info.get("jsonl_download_uri"):
+        return info["jsonl_download_uri"], "default-cards.jsonl.gz"
+    if info.get("download_uri"):
+        return info["download_uri"], "default-cards.json"
+    raise RuntimeError(f"Scryfall bulk entry has no download link: {sorted(info)}")
+
+
 def download(dest_dir: Path | None = None) -> tuple[Path, dict]:
     dest_dir = dest_dir or data_dir()
     dest_dir.mkdir(parents=True, exist_ok=True)
     info = remote_info()
-    dest = dest_dir / "default-cards.json"
-    tmp = dest.with_suffix(".part")
-    with _get(info["download_uri"]) as r, tmp.open("wb") as f:
+    url, filename = download_url(info)
+    dest = dest_dir / filename
+    tmp = dest_dir / (filename + ".part")
+    with _get(url) as r, tmp.open("wb") as f:
         shutil.copyfileobj(r, f, length=1 << 20)
+    with tmp.open("rb") as f:
+        magic = f.read(2)
+    if filename.endswith(".gz") and magic != b"\x1f\x8b":
+        tmp.unlink()
+        raise RuntimeError("downloaded bulk file isn't gzip — Scryfall's format may have changed again")
     tmp.replace(dest)
+    for old in dest_dir.glob("default-cards.*"):
+        if old != dest and not old.name.endswith(".part"):
+            old.unlink()
     return dest, info
 
 
@@ -85,8 +107,9 @@ def load(bulk_file: Path) -> int:
     """(Re)build the printings table from a bulk file. Returns row count."""
     cols = ", ".join(f"'{k}': '{v}'" for k, v in COLUMNS.items())
     src = str(bulk_file).replace("'", "''")
-    explicit = f"read_json('{src}', format = 'array', columns = {{{cols}}})"
-    inferred = f"read_json_auto('{src}', format = 'array', sample_size = -1)"
+    fmt = "newline_delimited" if ".jsonl" in bulk_file.name else "array"
+    explicit = f"read_json('{src}', format = '{fmt}', columns = {{{cols}}})"
+    inferred = f"read_json_auto('{src}', format = '{fmt}', sample_size = -1)"
     con = connect(read_only=False)
     try:
         try:
