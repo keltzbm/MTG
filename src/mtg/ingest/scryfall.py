@@ -47,6 +47,7 @@ COLUMNS = {
     "cmc": "DOUBLE",
     "color_identity": "VARCHAR[]",
     "legalities": "JSON",
+    "oracle_text": "VARCHAR",
     "card_faces": "JSON",
     "prices": "STRUCT(usd VARCHAR, usd_foil VARCHAR, tix VARCHAR)",
 }
@@ -156,6 +157,7 @@ def _create(con: duckdb.DuckDBPyConnection, source: str) -> None:
                 "set"                                                        AS set_code,
                 collector_number, layout, frame, border_color, lang, digital,
                 released_at, mtgo_id, arena_id, rarity, games, type_line, cmc, color_identity, legalities,
+                oracle_text, card_faces,
                 TRY_CAST(prices.usd AS DOUBLE)                               AS usd,
                 TRY_CAST(prices.usd_foil AS DOUBLE)                          AS usd_foil,
                 TRY_CAST(prices.tix AS DOUBLE)                               AS tix

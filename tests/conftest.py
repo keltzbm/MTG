@@ -2,7 +2,7 @@
 
 import pytest
 
-from mtg.models import Prices, Printing
+from mtg.models import CardRules, Prices, Printing
 
 CARDS = {
     # oracle_id: (name, layout, usd, tix)
@@ -14,6 +14,28 @@ CARDS = {
     "o-fire": ("Fire // Ice", "split", 1.0, 0.1),
     "o-rider": ("Murderous Rider // Swift End", "adventure", 2.0, None),
     "o-yshtola": ("Y'shtola, Night's Blessed", "normal", 3.0, None),
+    "o-bolt": ("Lightning Bolt", "normal", 1.0, 0.02),
+    "o-rats": ("Relentless Rats", "normal", 0.2, 0.01),
+    "o-crypt": ("Mana Crypt", "normal", 150.0, 20.0),
+}
+
+_CMDR = {"commander": "legal", "duel": "legal"}
+RULES = {
+    # oracle_id: (legalities, color_identity, type_line, oracle_text)
+    "o-sol": ({**_CMDR, "modern": "not_legal", "legacy": "banned", "vintage": "restricted"},
+              (), "Artifact", "{T}: Add {C}{C}."),
+    "o-rift": ({**_CMDR, "modern": "not_legal", "legacy": "legal"}, ("U",), "Instant", "Overload {6}{U}"),
+    "o-forest": ({**_CMDR, "modern": "legal"}, ("G",), "Basic Land — Forest", "({T}: Add {G}.)"),
+    "o-snowf": ({**_CMDR, "modern": "legal"}, ("G",), "Basic Snow Land — Forest", "({T}: Add {G}.)"),
+    "o-aesi": ({**_CMDR, "modern": "legal"}, ("U", "G"), "Legendary Creature — Serpent",
+               "You may play an additional land on each of your turns."),
+    "o-fire": ({**_CMDR, "modern": "legal"}, ("U", "R"), "Instant // Instant", "Fire\nIce"),
+    "o-bolt": ({**_CMDR, "modern": "legal", "pioneer": "not_legal"}, ("R",), "Instant",
+               "Lightning Bolt deals 3 damage to any target."),
+    "o-rats": ({**_CMDR, "modern": "legal"}, ("B",), "Creature — Rat",
+               "A deck can have any number of cards named Relentless Rats."),
+    "o-crypt": ({"commander": "banned", "duel": "banned", "modern": "not_legal", "vintage": "restricted"},
+                (), "Artifact", "At the beginning of your upkeep, flip a coin."),
 }
 PRINTINGS = {
     "s-sol-m3c": Printing("s-sol-m3c", "o-sol", "Sol Ring", "m3c", "283"),
@@ -59,6 +81,10 @@ class FakeCatalog:
 
     def is_basic(self, oid):
         return CARDS[oid][0] in {"Forest", "Island", "Plains", "Swamp", "Mountain", "Wastes"}
+
+    def rules(self, oid):
+        r = RULES.get(oid)
+        return CardRules(*r) if r else None
 
 
 @pytest.fixture

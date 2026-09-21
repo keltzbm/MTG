@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from mtg.models import Prices, Printing
+from mtg.models import CardRules, Prices, Printing
 
 
 class Catalog(Protocol):
@@ -26,3 +26,7 @@ class Catalog(Protocol):
 
     def is_basic(self, oracle_id: str) -> bool:
         """Plains, Island, Swamp, Mountain, Forest, Wastes. Snow basics are not."""
+
+    def rules(self, oracle_id: str) -> CardRules | None:
+        """Legalities, color identity, type line, oracle text — None if the card
+        data predates these fields (re-run: mtg ingest scryfall --force)."""

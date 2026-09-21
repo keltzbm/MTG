@@ -4,13 +4,14 @@ Everything a sync needs is loaded into dicts on first use (~30k cards),
 so a sync is one pass over the store rather than thousands of queries.
 """
 
+import json
 from functools import cached_property
 from pathlib import Path
 
 import duckdb
 
 from mtg.config import data_dir
-from mtg.models import Prices, Printing
+from mtg.models import CardRules, Prices, Printing, merge_legalities
 
 BASICS = {"plains", "island", "swamp", "mountain", "forest", "wastes"}
 
@@ -25,6 +26,11 @@ def connect(path: Path | None = None, read_only: bool = True) -> duckdb.DuckDBPy
         raise FileNotFoundError("no card data yet — run: mtg ingest scryfall")
     path.parent.mkdir(parents=True, exist_ok=True)
     return duckdb.connect(str(path), read_only=read_only)
+
+
+def _json(v):
+    """JSON columns come back as text; inferred-schema columns as Python objects."""
+    return json.loads(v) if isinstance(v, str) else v
 
 
 class DuckCatalog:
@@ -76,6 +82,47 @@ class DuckCatalog:
             return {}   # card data loaded before rarity was stored — re-run ingest
         return dict(rows)
 
+    @cached_property
+    def _rules(self) -> dict[str, CardRules]:
+        """Legalities merged across every printing (see merge_legalities). For the
+        rest, the newest printing wins, but never a Secret Lair reversible (its
+        type line and faces are doubled)."""
+        key = ("coalesce(date_diff('day', DATE '1990-01-01', released_at), 0)"
+               " + CASE WHEN layout = 'reversible_card' THEN 0 ELSE 1000000 END")
+        try:
+            legal_rows = self.con.execute("""
+                SELECT DISTINCT oracle_id, CAST(to_json(legalities) AS VARCHAR)
+                FROM printings WHERE oracle_id IS NOT NULL
+            """).fetchall()
+            rows = self.con.execute(f"""
+                SELECT oracle_id,
+                       arg_max(color_identity, {key}),
+                       arg_max(type_line, {key}), arg_max(oracle_text, {key}),
+                       arg_max(card_faces, {key})
+                FROM printings WHERE oracle_id IS NOT NULL
+                GROUP BY oracle_id
+            """).fetchall()
+        except duckdb.Error:
+            return {}   # card data loaded before oracle_text was stored — re-run ingest
+        by_card: dict[str, list[dict]] = {}
+        for oid, legal in legal_rows:
+            by_card.setdefault(oid, []).append(_json(legal) or {})
+        out = {}
+        for oid, ci, type_line, text, faces in rows:
+            faces = _json(faces) or []
+            if not text:
+                text = "\n".join(f.get("oracle_text") or "" for f in faces if isinstance(f, dict))
+            out[oid] = CardRules(
+                legalities=merge_legalities(by_card.get(oid, [])),
+                color_identity=tuple(ci or ()),
+                type_line=type_line or "",
+                oracle_text=text or "",
+            )
+        return out
+
+    def rules(self, oracle_id: str) -> CardRules | None:
+        return self._rules.get(oracle_id)
+
     def arena_rarity(self, oracle_id: str) -> str | None:
         r = self._arena.get(oracle_id)
         return "mythic" if r in {"mythic", "special", "bonus"} else r
@@ -85,6 +132,8 @@ class DuckCatalog:
         exact, front = self._names
         if key.startswith("a-"):  # Arena rebalanced cards, "A-Name"
             key = key[2:]
+        if "/" in key and " // " not in key:  # MTGO writes split cards as "Fire/Ice"
+            key = key.replace("/", " // ")
         return exact.get(key) or front.get(key) or front.get(key.split(" // ")[0])
 
     def name(self, oracle_id: str) -> str:
