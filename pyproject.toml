@@ -8,8 +8,6 @@ dependencies = [
     "duckdb>=1.0",
 ]
 
-[project.optional-dependencies]
-dev = []
 
 [project.scripts]
 mtg = "mtg.cli:app"

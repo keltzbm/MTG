@@ -269,7 +269,6 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.0" },
     { name = "typer", specifier = ">=0.12" },
 ]
-provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
