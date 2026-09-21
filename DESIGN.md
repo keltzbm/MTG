@@ -21,7 +21,7 @@ Both are the same bug: **name is not a key.**
 | Decision | Why |
 |---|---|
 | Key everything by Scryfall `oracle_id` | Names collide and differ across printings. Resolve once, at the edge. |
-| Scryfall bulk JSON, not scraping | Daily, authoritative, includes legalities and prices — **paper USD and MTGO tix** (Scryfall sources tix from Cardhoarder). |
+| Scryfall bulk JSON, not scraping (MTGO decklists are the one scrape — no API exists) | Daily, authoritative, includes legalities and prices — **paper USD and MTGO tix** (Scryfall sources tix from Cardhoarder). |
 | DuckDB for card data only | Loads the ~500 MB bulk file directly. The collection is re-read from the ManaBox CSV each run — 2,500 rows don't need a database. |
 | Dataclasses, stdlib where possible | Validation happens at ingest; runtime deps are just `typer` and `duckdb`. |
 | WUBRG color ordering | The old `sorted()` produced `BGU`; every external source says `UBG`. |
@@ -56,9 +56,9 @@ pCloud syncs. Config is `~/.config/mtg/config.toml`.
 |---|---|---|
 | 1 | Collection truth: Scryfall + ManaBox + precons, `mtg own` | done |
 | 2 | Obsidian export: `_generated/`, `mtg sync` | done |
-| 3 | Analysis: mana demand/supply, curve, legality, playset eligibility | stubs |
+| 3 | Analysis: mana demand/supply, curve, legality, playset eligibility | legality + playsets done; mana stubs |
 | 4 | Prices and logging: paper + MTGO, price log, list versions | done — log rollup still to do |
-| 5 | Metagame ingest: MTGO decklists only | not started |
+| 5 | Metagame ingest: MTGO decklists only | ingest + card stats done |
 | — | Export: Moxfield, ManaBox, MTGO .txt, TCGplayer mass entry, owned-printing pins | done |
 
 ## Layout
@@ -69,9 +69,9 @@ src/mtg/
 ├── vault.py        read deck notes, frontmatter, buy lines — read-only
 ├── sync.py         the work behind `mtg sync`, CLI- and DB-free
 ├── models/         Printing, Prices, Deck, DeckEntry, Holding
-├── ingest/         scryfall, manabox, decklist, precon
+├── ingest/         scryfall, manabox, decklist, precon, arena, mtgo
 ├── store/          Catalog protocol + DuckDB implementation
-├── analysis/       resolve, ownership, pricing, colors, legality*, mana*
+├── analysis/       resolve, ownership, pricing, colors, legality, metagame, mana*
 ├── export/         formats (moxfield/manabox/mtgo/tcgplayer), obsidian
 └── cli.py          typer app — the only entry point
 precons/            sealed precon lists (Commander / Deck sections)

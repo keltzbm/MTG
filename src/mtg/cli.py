@@ -15,6 +15,8 @@ from mtg.export import formats
 app = typer.Typer(help="Collection, decks, prices, and the Obsidian vault.", no_args_is_help=True)
 ingest_app = typer.Typer(help="Load outside data.", no_args_is_help=True)
 app.add_typer(ingest_app, name="ingest")
+meta_app = typer.Typer(help="MTGO metagame: league 5-0s, challenges, showcases.", no_args_is_help=True)
+app.add_typer(meta_app, name="meta")
 
 DeckRef = Annotated[str, typer.Argument(help="Deck note slug (aesi-lands) or a path to .md/.txt")]
 
@@ -85,6 +87,151 @@ def ingest_arena(path: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text("".join(f"{h.quantity} {h.name}\n" for h in holdings), encoding="utf-8")
     typer.echo(f"{len(holdings)} Arena cards -> {dest}")
+
+
+KindOpt = typer.Option(
+    None, "--kind", "-k", help="league | challenge | showcase | qualifier | preliminary; repeatable",
+)
+
+
+def _kinds(kind: list[str] | None) -> list[str] | None:
+    from mtg.ingest import mtgo
+    bad = [k for k in kind or [] if k not in mtgo.KINDS]
+    if bad:
+        raise typer.BadParameter(f"--kind must be one of {', '.join(mtgo.KINDS)}")
+    return kind or None
+
+
+FormatsOpt = typer.Option(
+    ["modern"], "--format", "-f", help="modern, pioneer, pauper, ... or all; repeatable",
+)
+
+
+def _formats(fmt: list[str]) -> list[str] | None:
+    """None means every format."""
+    fmts = [f.lower() for f in fmt]
+    return None if "all" in fmts else fmts
+
+
+@ingest_app.command("mtgo")
+def ingest_mtgo(
+    fmt: list[str] = FormatsOpt,
+    days: int = typer.Option(7, help="How far back to look"),
+    kind: list[str] = KindOpt,
+    delay: float = typer.Option(1.0, help="Seconds between page requests"),
+) -> None:
+    """Fetch MTGO decklists (league 5-0s, challenges, showcases) from mtgo.com."""
+    from datetime import date, timedelta
+
+    from mtg.ingest import mtgo
+    since = date.today() - timedelta(days=days)
+    res = mtgo.ingest(_formats(fmt), since, kinds=_kinds(kind), delay=delay, progress=typer.echo)
+    typer.echo(f"{len(res.fetched)} new events · {res.skipped} already stored · {mtgo.store_dir()}")
+    if res.pending:
+        typer.echo(f"{len(res.pending)} not published yet — retried next run: {', '.join(res.pending)}")
+    for slug, err in res.failed:
+        typer.echo(f"  ! {slug}: {err}", err=True)
+
+
+def _events(fmt: list[str], days: int, kind: list[str] | None):
+    from datetime import date, timedelta
+
+    from mtg.ingest import mtgo
+    events = mtgo.load(_formats(fmt), date.today() - timedelta(days=days), _kinds(kind))
+    if not events:
+        names = "/".join(fmt)
+        typer.echo(f"no stored {names} events in the last {days} days — run: mtg ingest mtgo -f {fmt[0]}",
+                   err=True)
+        raise typer.Exit(1)
+    return events
+
+
+@meta_app.command("cards")
+def meta_cards(
+    fmt: list[str] = FormatsOpt,
+    days: int = typer.Option(14),
+    kind: list[str] = KindOpt,
+    board: str = typer.Option("all", help="all | main | side"),
+    top: int = typer.Option(40, help="Rows to show; 0 for all"),
+) -> None:
+    """Most-played cards: share of decks, average copies, main vs side."""
+    from mtg.analysis import metagame
+    events = _events(fmt, days, kind)
+    n = sum(len(e.decks) for e in events)
+    distinct = len({d.fingerprint for e in events for d in e.decks})
+    stats = metagame.card_stats(events, board)
+    typer.echo(f"{n} decks ({distinct} distinct lists) from {len(events)} events\n")
+    typer.echo(f"{'decks':>6} {'share':>6} {'avg':>4}  {'main':>4} {'side':>4}  card")
+    for s in stats[:top or None]:
+        typer.echo(f"{s.decks:>6} {s.share(n):>6.0%} {s.avg:>4.1f}  "
+                   f"{s.main_decks:>4} {s.side_decks:>4}  {s.name}")
+
+
+@meta_app.command("decks")
+def meta_decks(
+    fmt: list[str] = FormatsOpt,
+    days: int = typer.Option(14),
+    kind: list[str] = KindOpt,
+    card: str = typer.Option(None, "--card", "-c", help="Only decks playing this card"),
+    player: str = typer.Option(None, "--player", "-p"),
+) -> None:
+    """List stored decks; `mtg meta show <event> <player>` prints one.
+    The 6-character column is the list's fingerprint: equal values are the same 75."""
+    from mtg.analysis import metagame
+    for e, d in metagame.find_decks(_events(fmt, days, kind), card, player):
+        place = d.record or (f"#{d.rank}" if d.rank else "")
+        typer.echo(f"{e.date}  {e.kind:<10} {place:>5}  {d.fingerprint[:6]}  {d.player:<20} {e.slug}")
+
+
+@meta_app.command("show")
+def meta_show(
+    event: str = typer.Argument(..., help="Event slug, as `mtg meta decks` lists it"),
+    player: str = typer.Argument(...),
+    out: Path = typer.Option(None, "-o", "--out", help="Write an MTGO .txt that `mtg own` can read"),
+) -> None:
+    """Print one stored decklist in MTGO .txt form."""
+    import json
+
+    from mtg.ingest import mtgo
+    path = mtgo.store_dir() / f"{event}.json"
+    if not path.exists():
+        raise typer.BadParameter(f"no stored event {event} — run: mtg ingest mtgo")
+    ev = mtgo.Event.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    deck = next((d for d in ev.decks if d.player.lower() == player.lower()), None)
+    if deck is None:
+        raise typer.BadParameter(f"{player} has no list in {event}")
+    if out:
+        out.expanduser().write_text(deck.to_text(), encoding="utf-8")
+        typer.echo(f"wrote {out}")
+    else:
+        typer.echo(deck.to_text(), nl=False)
+
+
+@app.command()
+def legal(
+    deck: DeckRef,
+    fmt: str = typer.Option(None, "--format", "-f", help="Check against another format; default: the note's"),
+) -> None:
+    """Is a deck legal? Size, copies, bans, sideboard, commander color identity. 'all' checks every deck."""
+    from mtg.analysis import legality
+    cfg = config.load()
+    cat = _catalog()
+    targets = vault.decks(cfg.mtg_dir) if deck == "all" else [vault.find(cfg.mtg_dir, deck)]
+    failed = False
+    for d in targets:
+        rep = legality.check_deck(d, cat, fmt)
+        head = f"{d.slug} · {rep.format}"
+        if rep.legal and not rep.warnings:
+            typer.echo(f"✓ {head}")
+            continue
+        verdict = "✓" if rep.legal else f"✗ {len(rep.errors)} error{'s' * (len(rep.errors) != 1)}"
+        typer.secho(f"{verdict} {head}", bold=True)
+        for i in rep.errors + rep.warnings:
+            mark = "✗" if i.severity == "error" else "!"
+            typer.echo(f"  {mark} {i.card + ' — ' if i.card else ''}{i.message}")
+        failed = failed or not rep.legal
+    if failed:
+        raise typer.Exit(1)
 
 
 @app.command()

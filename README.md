@@ -7,8 +7,8 @@ rendered into my Obsidian vault. Design: [DESIGN.md](DESIGN.md).
 
 ```bash
 cd ~/atelier/github/mtg
-uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
+uv sync                      # creates .venv, installs the package + dev tools
+source .venv/bin/activate    # or prefix commands with `uv run`
 mtg init
 ```
 
@@ -36,7 +36,24 @@ mtg export all --to manabox -o ~/Downloads/mtg-exports        # every deck, one 
 mtg export izzet-murktide --to mtgo
 mtg export aesi-lands --to tcgplayer        # mass-entry list of the shortfall
 mtg ingest arena ~/Downloads/mtga_collection.txt              # text list or CSV
+mtg legal aesi-lands            # size, copies, bans, commander color identity
+mtg legal all                   # every deck; exits 1 if any is illegal
+mtg legal my-deck -f modern     # check against a different format
 ```
+
+## Metagame (MTGO)
+
+```bash
+mtg ingest mtgo -f modern --days 7          # league 5-0s, challenges, showcases from mtgo.com
+mtg ingest mtgo -f pauper -k league          # just leagues; -k repeats
+mtg meta cards -f modern --days 14           # most-played cards: share, avg copies, main/side
+mtg meta decks -f modern --card "Psychic Frog"
+mtg meta show <event-slug> <player> -o ~/Downloads/list.txt
+mtg own ~/Downloads/list.txt                  # what that list costs you
+```
+
+Events are stored once each under `~/.local/share/mtg/mtgo/`; re-running only
+fetches new ones.
 
 A deck is named by its note's slug, or by a path to any `.md` or `.txt` list.
 
@@ -54,7 +71,7 @@ mtg schedule --at 07:00         # daily launchd job: fresh prices + full sync
 | What | Where |
 |---|---|
 | Config | `~/.config/mtg/config.toml` — vault path, sealed precons you own |
-| Card data, collection, sync state | `~/.local/share/mtg/` — outside the synced vault |
+| Card data, collection, sync state, MTGO events | `~/.local/share/mtg/` — outside the synced vault |
 | Precon lists | `precons/` in this repo |
 | Output | `tcg/mtg/_generated/` and `tcg/mtg/_log/` in the vault — nothing else |
 
