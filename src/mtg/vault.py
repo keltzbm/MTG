@@ -51,7 +51,7 @@ def frontmatter(text: str) -> dict:
 def decklist_block(text: str) -> str | None:
     """The fenced block under a "... import" heading, else the first block
     whose lines are mostly "N Card Name"."""
-    m = re.search(r"^#+ .*import.*$", text, re.M | re.I)
+    m = re.search(r"^#+ .*\bimport\b.*$", text, re.M | re.I)
     if m:
         f = FENCE.search(text, m.end())
         if f:
@@ -93,7 +93,7 @@ def find(mtg_dir: Path, ref: str) -> Deck:
     """A deck by slug ("aesi-lands") or by path to a .md or .txt file."""
     p = Path(ref).expanduser()
     if p.suffix == ".txt" and p.exists():
-        return parse_text(p.read_text(encoding="utf-8"), slug=p.stem)
+        return parse_text(p.read_text(encoding="utf-8-sig"), slug=p.stem)
     if p.suffix == ".md" and p.exists():
         deck = read_deck(p)
         if deck:

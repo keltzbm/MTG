@@ -63,7 +63,9 @@ Every ingest resyncs the vault afterwards (`--no-sync` to skip). Beyond that:
 
 ```bash
 mtg watch                       # resync on every deck-note save or new ManaBox export
-mtg schedule --at 07:00         # daily launchd job: fresh prices + full sync
+mtg schedule set 07:00 19:30    # launchd job at these 24-hour times; replaces any old schedule
+mtg schedule                    # times, next run, last result, log path
+mtg schedule remove
 ```
 
 ## Where things live

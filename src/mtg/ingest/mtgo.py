@@ -279,8 +279,10 @@ def ingest(
         formats = [formats]
     fmts = {f.lower() for f in formats} if formats else None
     res = IngestResult()
-    for y, m in _months(since, until):
+    for i, (y, m) in enumerate(_months(since, until)):
         url = f"{BASE}/decklists/{y}/{m:02d}"
+        if i:
+            time.sleep(delay)   # long backfills hit the index once per month — pace those too
         try:
             index = get(url)
         except Exception as e:  # report and move on to the next month

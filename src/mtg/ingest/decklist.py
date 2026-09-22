@@ -6,8 +6,10 @@ Accepted line shapes:
     1 Sol Ring (M3C) 283
     1 Sol Ring (M3C) 283 *F*
 Section headers switch the board: Commander, Deck, Mainboard, Sideboard,
-Companion. Lines starting with # or // are comments. A blank line after
-the main deck starts the sideboard only in MTGO-style lists (no headers).
+Companion. Maybeboard / Considering / Tokens sections are skipped — those
+cards aren't in the deck. Zero-quantity lines are skipped. Lines starting
+with # or // are comments. A blank line after the main deck starts the
+sideboard only in MTGO-style lists (no headers).
 """
 
 import re
@@ -26,11 +28,13 @@ HEADERS = {
     "deck": "main", "main": "main", "mainboard": "main", "maindeck": "main",
     "sideboard": "sideboard", "companion": "companion",
 }
+SKIPPED = {"maybeboard", "maybe", "considering", "tokens", "attractions", "stickers"}
 
 
 def parse_text(text: str, slug: str = "deck") -> Deck:
     deck = Deck(slug=slug)
-    board = "main"
+    text = text.lstrip("\ufeff")    # byte-order mark from Windows-made files
+    board: str | None = "main"
     saw_header = False
     saw_main = False
     for raw in text.splitlines():
@@ -41,12 +45,12 @@ def parse_text(text: str, slug: str = "deck") -> Deck:
             continue
         if line.startswith(("#", "//")):
             continue
-        header = HEADERS.get(line.rstrip(":").lower())
-        if header:
-            board, saw_header = header, True
+        key = line.rstrip(":").lower()
+        if key in HEADERS or key in SKIPPED:
+            board, saw_header = HEADERS.get(key), True   # None = skip this section
             continue
         m = LINE.match(line)
-        if not m:
+        if not m or board is None or int(m["qty"]) == 0:
             continue
         deck.entries.append(DeckEntry(
             name=m["name"].strip(),
@@ -60,4 +64,4 @@ def parse_text(text: str, slug: str = "deck") -> Deck:
 
 
 def load(path: Path) -> Deck:
-    return parse_text(path.read_text(encoding="utf-8"), slug=path.stem)
+    return parse_text(path.read_text(encoding="utf-8-sig"), slug=path.stem)

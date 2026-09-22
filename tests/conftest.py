@@ -17,6 +17,11 @@ CARDS = {
     "o-bolt": ("Lightning Bolt", "normal", 1.0, 0.02),
     "o-rats": ("Relentless Rats", "normal", 0.2, 0.01),
     "o-crypt": ("Mana Crypt", "normal", 150.0, 20.0),
+    "o-thrasios": ("Thrasios, Triton Hero", "normal", 10.0, 1.0),
+    "o-tymna": ("Tymna the Weaver", "normal", 12.0, 1.0),
+    "o-dwarves": ("Seven Dwarves", "normal", 0.25, 0.01),
+    "o-teferi": ("Teferi, Hero of Dominaria", "normal", 15.0, 3.0),
+    "o-lurrus": ("Lurrus of the Dream-Den", "normal", 3.0, 0.4),
 }
 
 _CMDR = {"commander": "legal", "duel": "legal"}
@@ -36,6 +41,16 @@ RULES = {
                "A deck can have any number of cards named Relentless Rats."),
     "o-crypt": ({"commander": "banned", "duel": "banned", "modern": "not_legal", "vintage": "restricted"},
                 (), "Artifact", "At the beginning of your upkeep, flip a coin."),
+    "o-thrasios": ({**_CMDR, "modern": "legal"}, ("U", "G"), "Legendary Creature — Merfolk Wizard",
+                   "{4}: Scry 1. Partner"),
+    "o-tymna": ({**_CMDR, "modern": "legal"}, ("W", "B"), "Legendary Creature — Human Cleric",
+                "Lifelink. Partner"),
+    "o-dwarves": ({**_CMDR, "modern": "legal"}, ("R",), "Creature — Dwarf",
+                  "A deck can have up to seven cards named Seven Dwarves."),
+    "o-teferi": ({**_CMDR, "modern": "legal"}, ("W", "U"), "Legendary Planeswalker — Teferi",
+                 "+1: Draw a card."),
+    "o-lurrus": ({**_CMDR, "modern": "legal"}, ("W", "B"), "Legendary Creature — Cat Nightmare",
+                 "Companion — Each permanent card in your starting deck has mana value 2 or less."),
 }
 PRINTINGS = {
     "s-sol-m3c": Printing("s-sol-m3c", "o-sol", "Sol Ring", "m3c", "283"),

@@ -1,6 +1,8 @@
 import json
 from datetime import date
 
+import pytest
+
 from mtg.analysis import metagame
 from mtg.ingest import mtgo
 from mtg.ingest.decklist import parse_text
@@ -185,3 +187,197 @@ def test_fingerprint_groups_identical_lists_only():
     assert alice.fingerprint != bob.fingerprint
     moved = mtgo.MtgoDeck("zed", bob.main, [mtgo.Card("Fire/Ice", 1)])
     assert moved.fingerprint != bob.fingerprint             # sideboard counts
+
+
+# ---- more parsing edge cases -------------------------------------------------------
+
+@pytest.mark.parametrize("name, fmt, kind", [
+    ("modern-league", "modern", "league"),
+    ("pauper-challenge-32", "pauper", "challenge"),
+    ("modern-showcase-qualifier", "modern", "showcase"),
+    ("legacy-super-qualifier", "legacy", "qualifier"),
+    ("pioneer-preliminary", "pioneer", "preliminary"),
+    ("duel-commander-league", "duel-commander", "league"),
+    ("vintage-cube-draft", "vintage", "other"),
+])
+def test_format_and_kind_table(name, fmt, kind):
+    assert (mtgo.event_format(name), mtgo.classify(name)) == (fmt, kind)
+
+
+@pytest.mark.parametrize("slug", [
+    "premodern-league-2026-03-3110365",        # league ids are short and look like series ids
+    "modern-challenge-64-2026-03-3112837908",
+])
+def test_real_slug_shapes_parse(slug):
+    name, day, eid = mtgo.parse_slug(slug)
+    assert day == "2026-03-31" and eid.isdigit() and not name.endswith("-")
+
+
+@pytest.mark.parametrize("start, end, months", [
+    ((2026, 9, 1), (2026, 9, 21), [(2026, 9)]),
+    ((2025, 11, 15), (2026, 2, 1), [(2025, 11), (2025, 12), (2026, 1), (2026, 2)]),   # across a year
+    ((2026, 9, 30), (2026, 10, 1), [(2026, 9), (2026, 10)]),
+])
+def test_months(start, end, months):
+    assert mtgo._months(date(*start), date(*end)) == months
+
+
+def test_main_deck_rows_flagged_sideboard_move_to_side():
+    data = {"decklists": [{"player": "x", "main_deck": [_row("Bolt", 4), _row("Duress", 2, side=True)],
+                           "sideboard_deck": [_row("Duress", 1, side=True)]}]}
+    d = mtgo.parse_event("modern-league-2026-09-2012850002", data).decks[0]
+    assert [(c.name, c.qty) for c in d.main] == [("Bolt", 4)]
+    assert [(c.name, c.qty) for c in d.side] == [("Duress", 3)]
+
+
+def test_ranks_by_login_name_and_unranked_last():
+    data = {"decklists": [{"player": "Zed", "main_deck": []}, {"player": "Amy", "main_deck": []},
+                          {"player": "Bo", "main_deck": []}],
+            "standings": [{"login_name": "amy", "rank": 2}, {"login_name": "BO", "rank": "1"}]}
+    decks = mtgo.parse_event("modern-challenge-32-2026-09-1912850001", data).decks
+    assert [(d.player, d.rank) for d in decks] == [("Bo", 1), ("Amy", 2), ("Zed", None)]
+
+
+def test_rows_without_names_are_skipped_and_quantity_key_accepted():
+    data = {"decklists": [{"player": "x", "main_deck": [{"quantity": 3, "card_name": "Bolt"}, {"qty": "2"}]}]}
+    d = mtgo.parse_event("modern-league-2026-09-2012850002", data).decks[0]
+    assert [(c.name, c.qty) for c in d.main] == [("Bolt", 3)]
+
+
+def test_explicit_wins_record():
+    data = {"decklists": [{"player": "x", "main_deck": [], "wins": {"wins": "4", "losses": "1"}}]}
+    assert mtgo.parse_event("modern-challenge-32-2026-09-1912850001", data).decks[0].record == "4-1"
+
+
+def test_bad_slug_raises():
+    with pytest.raises(ValueError, match="not an event slug"):
+        mtgo.parse_event("decklists", CHALLENGE)
+
+
+def test_event_roundtrips_through_storage(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    e = mtgo.parse_event("modern-challenge-32-2026-09-1912850001", CHALLENGE)
+    mtgo.save(e)
+    [back] = mtgo.load()
+    assert back == e
+
+
+def test_load_filters(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    mtgo.save(mtgo.parse_event("modern-challenge-32-2026-09-1912850001", CHALLENGE))
+    mtgo.save(mtgo.parse_event("modern-league-2026-09-2012850002", LEAGUE))
+    mtgo.save(mtgo.parse_event("pioneer-league-2026-09-2012850003", LEAGUE))
+    assert [e.date for e in mtgo.load("modern")] == ["2026-09-20", "2026-09-19"]          # newest first
+    assert [e.kind for e in mtgo.load("modern", kinds=["league"])] == ["league"]
+    assert mtgo.load("modern", since=date(2026, 9, 20))[0].kind == "league"
+    assert len(mtgo.load(["modern", "pioneer"])) == 3
+    assert mtgo.load(folder=tmp_path / "nowhere") == []
+
+
+# ---- ingest behaviour ---------------------------------------------------------------
+
+def _site(slugs, page=None):
+    index = "".join(f'<a href="/decklist/{s}">x</a>' for s in slugs)
+    pages = {"https://www.mtgo.com/decklists/2026/09": index, "https://www.mtgo.com/decklists/2026/08": ""}
+    for s in slugs:
+        pages[f"https://www.mtgo.com/decklist/{s}"] = page or _page(CHALLENGE)
+    return pages
+
+
+def test_date_bounds_are_inclusive(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    slugs = ["modern-league-2026-09-0112850001", "modern-league-2026-09-2112850002",
+             "modern-league-2026-09-2212850003", "modern-league-2026-08-3112850004"]
+    pages = _site(slugs)
+    res = mtgo.ingest("modern", since=date(2026, 9, 1), until=date(2026, 9, 21), delay=0,
+                      get=pages.__getitem__)
+    assert sorted(e.date for e in res.fetched) == ["2026-09-01", "2026-09-21"]
+
+
+def test_kind_filter_skips_fetching(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    pages = _site(["modern-league-2026-09-2012850002", "modern-challenge-32-2026-09-1912850001"])
+    fetched = []
+    res = mtgo.ingest("modern", since=date(2026, 9, 1), until=date(2026, 9, 21), delay=0,
+                      kinds=["challenge"], get=lambda u: fetched.append(u) or pages[u])
+    assert [e.kind for e in res.fetched] == ["challenge"]
+    assert not any("league" in u for u in fetched)
+
+
+def test_event_page_error_is_reported_and_run_continues(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    bad, good = "modern-league-2026-09-2012850002", "modern-challenge-32-2026-09-1912850001"
+    pages = _site([bad, good])
+
+    def get(url):
+        if bad in url:
+            raise mtgo.FetchError("timed out")
+        return pages[url]
+
+    res = mtgo.ingest("modern", since=date(2026, 9, 1), until=date(2026, 9, 21), delay=0, get=get)
+    assert res.failed == [(bad, "timed out")] and [e.slug for e in res.fetched] == [good]
+
+
+def test_index_requests_are_paced_too(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    sleeps = []
+    monkeypatch.setattr(mtgo.time, "sleep", sleeps.append)
+    pages = {"https://www.mtgo.com/decklists/2026/07": "", "https://www.mtgo.com/decklists/2026/08": "",
+             "https://www.mtgo.com/decklists/2026/09": ""}
+    mtgo.ingest("modern", since=date(2026, 7, 1), until=date(2026, 9, 21), delay=1.5, get=pages.__getitem__)
+    assert sleeps == [1.5, 1.5]                        # between the 3 index pages, not before the first
+
+
+def test_retrying_get(monkeypatch):
+    import urllib.error
+    attempts = []
+
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b"ok"
+
+    def fake_urlopen(req, timeout):
+        attempts.append(req.full_url)
+        if len(attempts) < 3:
+            raise TimeoutError("slow")
+        return Resp()
+
+    monkeypatch.setattr(mtgo.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(mtgo.time, "sleep", lambda s: None)
+    assert mtgo._get("https://www.mtgo.com/x") == "ok" and len(attempts) == 3
+
+    attempts.clear()
+
+    def always_down(req, timeout):
+        attempts.append(req.full_url)
+        raise urllib.error.URLError("down")
+
+    monkeypatch.setattr(mtgo.urllib.request, "urlopen", always_down)
+    with pytest.raises(mtgo.FetchError, match="no answer after 3 tries"):
+        mtgo._get("https://www.mtgo.com/x")
+    assert len(attempts) == 3
+
+
+# ---- metagame ------------------------------------------------------------------------
+
+def test_card_stats_side_only_and_empty():
+    e = mtgo.parse_event("modern-challenge-32-2026-09-1912850001", CHALLENGE)
+    side = {s.name: s for s in metagame.card_stats([e], board="side")}
+    assert set(side) == {"Fire/Ice", "Lightning Bolt"}
+    assert side["Lightning Bolt"].main_decks == 0 and side["Lightning Bolt"].side_decks == 1
+    assert metagame.card_stats([]) == []
+    assert metagame.CardStat("x").share(0) == 0.0 and metagame.CardStat("x").avg == 0.0
+
+
+def test_card_stats_order_is_stable():
+    e = mtgo.parse_event("modern-challenge-32-2026-09-1912850001", CHALLENGE)
+    names = [s.name for s in metagame.card_stats([e])]
+    assert names[0] == "Lightning Bolt"                # in both decks
+    assert names == [s.name for s in metagame.card_stats([e])]
+
+
+def test_find_decks_card_and_player_together():
+    e = mtgo.parse_event("modern-challenge-32-2026-09-1912850001", CHALLENGE)
+    assert [d.player for _, d in metagame.find_decks([e], card="Lightning Bolt", player="alice")] == ["alice"]
+    assert metagame.find_decks([e], card="Lightning Bolt", player="nobody") == []

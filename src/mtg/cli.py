@@ -4,9 +4,6 @@ import shutil
 from pathlib import Path
 from typing import Annotated
 
-import os
-import subprocess
-
 import typer
 
 from mtg import config, sync as syncmod, vault
@@ -404,51 +401,64 @@ def watch(interval: float = typer.Option(5.0, help="Seconds between checks")) ->
         typer.echo("\nstopped")
 
 
-PLIST = """<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>{label}</string>
-  <key>ProgramArguments</key><array><string>{exe}</string><string>sync</string></array>
-  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>{hour}</integer><key>Minute</key><integer>{minute}</integer></dict>
-  <key>StandardOutPath</key><string>{log}</string>
-  <key>StandardErrorPath</key><string>{log}</string>
-</dict>
-</plist>
-"""
+schedule_app = typer.Typer(help="The daily launchd job that runs `mtg sync` (macOS).")
+app.add_typer(schedule_app, name="schedule")
 
 
-def _launchctl_reload(label: str, plist: Path, load: bool = True) -> None:
-    domain = f"gui/{os.getuid()}"
-    subprocess.run(["launchctl", "bootout", f"{domain}/{label}"], capture_output=True)
-    if load:
-        subprocess.run(["launchctl", "bootstrap", domain, str(plist)],
-                       check=True, capture_output=True, text=True)
+def _show_schedule() -> None:
+    from datetime import datetime
 
-
-@app.command()
-def schedule(at: str = typer.Option("07:00", help="Daily time, HH:MM"), remove: bool = False) -> None:
-    """Install (or --remove) a macOS launchd job that runs `mtg sync` daily."""
-    import sys
-    label = "com.keltzbm.mtg-sync"
-    plist = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
-    if remove:
-        _launchctl_reload(label, plist, load=False)
-        plist.unlink(missing_ok=True)
-        typer.echo(f"removed {label}")
+    from mtg import schedule as sched
+    st = sched.status()
+    if not st.installed and not st.loaded:
+        typer.echo("no schedule — set one with: mtg schedule set 07:00")
         return
-    hour, minute = (int(x) for x in at.split(":"))
-    exe = Path(sys.argv[0]).resolve()
-    log = config.data_dir() / "sync.log"
-    log.parent.mkdir(parents=True, exist_ok=True)
-    plist.parent.mkdir(parents=True, exist_ok=True)
-    plist.write_text(PLIST.format(label=label, exe=exe, hour=hour, minute=minute, log=log))
+    times = ", ".join(sched.fmt(t) for t in st.times) or "(none in plist)"
+    nxt = sched.next_run(st.times, datetime.now())
+    typer.echo(f"{sched.LABEL}")
+    typer.echo(f"  times      {times}  (24-hour, daily)")
+    typer.echo(f"  next run   {nxt:%a %Y-%m-%d %H:%M}" if nxt else "  next run   —")
+    reload = "mtg schedule set " + " ".join(sched.fmt(t) for t in st.times)
+    typer.echo(f"  loaded     {'yes' if st.loaded else 'NO — reload with: ' + reload}")
+    if st.loaded:
+        typer.echo(f"  runs       {st.runs or '0'}   last exit {st.last_exit or '—'}   "
+                   f"state {st.state or '—'}")
+    typer.echo(f"  log        {sched.log_path()}")
+    typer.echo(f"  plist      {sched.plist_path()}")
+
+
+@schedule_app.callback(invoke_without_command=True)
+def schedule_main(ctx: typer.Context) -> None:
+    """Show the schedule (times, next run, last result). Subcommands: set, remove."""
+    if ctx.invoked_subcommand is None:
+        _show_schedule()
+
+
+@schedule_app.command("show")
+def schedule_show() -> None:
+    """Times, next run, whether it's loaded, and how the last run went."""
+    _show_schedule()
+
+
+@schedule_app.command("set")
+def schedule_set(
+    times: list[str] = typer.Argument(..., help="24-hour HH:MM times, e.g. 07:00 19:30"),
+) -> None:
+    """Run `mtg sync` daily at these times. Replaces any existing schedule."""
+    from mtg import schedule as sched
     try:
-        _launchctl_reload(label, plist)
-    except subprocess.CalledProcessError as e:
-        typer.echo(f"wrote {plist} but launchctl bootstrap failed:\n  {e.stderr.strip()}", err=True)
-        raise typer.Exit(1)
-    typer.echo(f"loaded {label}: daily at {hour:02d}:{minute:02d}\nlog: {log}")
+        parsed = sched.parse_times(times)
+        sched.install(parsed)
+    except (ValueError, RuntimeError) as e:
+        raise typer.BadParameter(str(e)) from e
+    _show_schedule()
+
+
+@schedule_app.command("remove")
+def schedule_remove() -> None:
+    """Unload and delete the job."""
+    from mtg import schedule as sched
+    typer.echo(f"removed {sched.LABEL}" if sched.remove() else "no schedule to remove")
 
 
 if __name__ == "__main__":
