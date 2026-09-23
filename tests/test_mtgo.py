@@ -3,6 +3,7 @@ from datetime import date
 
 import pytest
 
+from mtg import net
 from mtg.analysis import metagame
 from mtg.ingest import mtgo
 from mtg.ingest.decklist import parse_text
@@ -144,7 +145,7 @@ def test_unreachable_index_is_reported_not_raised(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
 
     def get(url):
-        raise mtgo.FetchError("timed out")
+        raise net.FetchError("timed out")
 
     res = mtgo.ingest("modern", since=date(2026, 9, 1), until=date(2026, 9, 21), delay=0, get=get)
     assert not res.fetched
@@ -357,7 +358,7 @@ def test_event_page_error_is_reported_and_run_continues(tmp_path, monkeypatch):
 
     def get(url):
         if bad in url:
-            raise mtgo.FetchError("timed out")
+            raise net.FetchError("timed out")
         return pages[url]
 
     res = mtgo.ingest("modern", since=date(2026, 9, 1), until=date(2026, 9, 21), delay=0, get=get)
@@ -375,43 +376,6 @@ def test_index_requests_are_paced_too(tmp_path, monkeypatch):
     }
     mtgo.ingest("modern", since=date(2026, 7, 1), until=date(2026, 9, 21), delay=1.5, get=pages.__getitem__)
     assert sleeps == [1.5, 1.5]  # between the 3 index pages, not before the first
-
-
-def test_retrying_get(monkeypatch):
-    import urllib.error
-
-    attempts = []
-
-    class Resp:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def read(self):
-            return b"ok"
-
-    def fake_urlopen(req, timeout):
-        attempts.append(req.full_url)
-        if len(attempts) < 3:
-            raise TimeoutError("slow")
-        return Resp()
-
-    monkeypatch.setattr(mtgo.urllib.request, "urlopen", fake_urlopen)
-    monkeypatch.setattr(mtgo.time, "sleep", lambda s: None)
-    assert mtgo._get("https://www.mtgo.com/x") == "ok" and len(attempts) == 3
-
-    attempts.clear()
-
-    def always_down(req, timeout):
-        attempts.append(req.full_url)
-        raise urllib.error.URLError("down")
-
-    monkeypatch.setattr(mtgo.urllib.request, "urlopen", always_down)
-    with pytest.raises(mtgo.FetchError, match="no answer after 3 tries"):
-        mtgo._get("https://www.mtgo.com/x")
-    assert len(attempts) == 3
 
 
 # ---- metagame ------------------------------------------------------------------------

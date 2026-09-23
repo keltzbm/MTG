@@ -29,6 +29,11 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 - Owned counts are computed once per sync instead of once per deck.
 - Clearer code in a few places: the deck-price builder, decklist set codes, and pairs that must line up
   one-to-one now fail loudly (`zip(strict=True)`) instead of silently truncating.
+- One HTTP layer (`net.py`) for Scryfall, mtgo.com, and tcgcsv: the same User-Agent everywhere, retries on
+  stalls and server errors, and a wait on 429 — for `Retry-After` when sent — as Scryfall requires. Client
+  errors like 403 fail at once instead of being retried.
+- Downloads stream to disk with a live size on a terminal (tcgcsv archives, the Scryfall bulk file); the
+  scheduled job's log gets plain lines. A bad Scryfall download no longer replaces the last good file.
 
 ### Removed
 - `analysis/mana.py`: stubs that were never implemented. Mana analysis is listed as not started in DESIGN.

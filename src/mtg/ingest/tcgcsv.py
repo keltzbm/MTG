@@ -15,25 +15,26 @@ Files are stored exactly as downloaded, still compressed, in
 is a later step, and it will need 7-Zip for the PPMd compression.
 
 A day that isn't published yet answers 404; it's reported as pending and
-tried again next run. tcgcsv asks for a descriptive User-Agent and a pause
-between requests (their FAQ and docs).
+tried again next run. tcgcsv asks for a pause between requests (their FAQ
+and docs); headers, retries and streaming live in mtg.net.
 """
 
 import time
-import urllib.error
-import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from functools import partial
 from pathlib import Path
 
-from mtg import __version__
+from mtg import net
 from mtg.config import data_dir
 
 BASE = "https://tcgcsv.com"
 FIRST_DAY = date(2024, 2, 8)
 SEVEN_ZIP_MAGIC = b"7z\xbc\xaf\x27\x1c"
-HEADERS = {"User-Agent": f"keltzbm-mtg/{__version__} (github.com/keltzbm/MTG)"}
+
+Download = Callable[[str, Path, net.Progress | None], int | None]
+Meter = Callable[[date, int, int | None], None]  # (day, bytes so far, total if known)
 
 
 def store_dir() -> Path:
@@ -69,29 +70,6 @@ def stored_bytes() -> int:
     return sum(p.stat().st_size for p in folder.glob("prices-*.ppmd.7z")) if folder.exists() else 0
 
 
-class FetchError(RuntimeError):
-    """tcgcsv didn't answer."""
-
-
-def _get(url: str, retries: int = 2, timeout: float = 60) -> bytes | None:
-    """The file's bytes, or None when it doesn't exist (404). Retries stalls."""
-    req = urllib.request.Request(url, headers=HEADERS)
-    for attempt in range(retries + 1):
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                return r.read()
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                return None
-            if attempt == retries:
-                raise FetchError(f"HTTP {e.code}") from e
-        except (TimeoutError, urllib.error.URLError, ConnectionError) as e:
-            if attempt == retries:
-                raise FetchError(f"no answer after {retries + 1} tries ({getattr(e, 'reason', e)})") from e
-        time.sleep(2 * (attempt + 1))
-    raise AssertionError("unreachable")
-
-
 def _days(since: date, until: date) -> list[date]:
     since = max(since, FIRST_DAY)
     return [since + timedelta(days=i) for i in range((until - since).days + 1)]
@@ -105,26 +83,28 @@ class ArchiveResult:
     failed: list[tuple[date, str]] = field(default_factory=list)
 
 
-def save(day: date, data: bytes) -> Path:
-    """Write via a .part file so an interrupted run never leaves a truncated archive."""
-    if not data.startswith(SEVEN_ZIP_MAGIC):
-        raise ValueError("not a 7z archive — tcgcsv's archive format may have changed")
-    dest = archive_path(day)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    tmp.write_bytes(data)
-    tmp.replace(dest)
-    return dest
+def _is_7z(path: Path) -> bool:
+    with path.open("rb") as f:
+        return f.read(len(SEVEN_ZIP_MAGIC)) == SEVEN_ZIP_MAGIC
+
+
+def _download(url: str, dest: Path, progress: net.Progress | None) -> int | None:
+    return net.download(url, dest, progress=progress)
 
 
 def ingest(
     since: date,
     until: date | None = None,
     delay: float = 0.25,
-    get: Callable[[str], bytes | None] = _get,
+    download: Download = _download,
     progress: Callable[[str], None] = lambda _: None,
+    meter: Meter | None = None,
 ) -> ArchiveResult:
-    """Download every day's archive in [since, until] that isn't stored yet."""
+    """Download every day's archive in [since, until] that isn't stored yet.
+
+    progress gets one line per finished day; meter, if given, gets byte counts
+    while a file streams — for a live display on a terminal.
+    """
     until = until or date.today()
     have = set(stored_days())
     res = ArchiveResult()
@@ -136,19 +116,19 @@ def ingest(
         if requested:
             time.sleep(delay)
         requested += 1
+        dest = archive_path(day)
         try:
-            data = get(archive_url(day))
+            size = download(archive_url(day), dest, partial(meter, day) if meter else None)
         except Exception as e:  # one bad day shouldn't stop a long backfill
             res.failed.append((day, str(e)))
             continue
-        if data is None:
+        if size is None:
             res.pending.append(day)
             continue
-        try:
-            save(day, data)
-        except ValueError as e:
-            res.failed.append((day, str(e)))
+        if not _is_7z(dest):
+            dest.unlink()
+            res.failed.append((day, "not a 7z archive — tcgcsv's archive format may have changed"))
             continue
         res.fetched.append(day)
-        progress(f"{day}  {len(data) / 1e6:6.1f} MB")
+        progress(f"{day}  {size / 1e6:6.1f} MB")
     return res

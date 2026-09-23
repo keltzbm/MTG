@@ -1,24 +1,37 @@
 from datetime import date
+from pathlib import Path
 
 import pytest
 
+from mtg import net
 from mtg.ingest import tcgcsv
 
 ARCHIVE = tcgcsv.SEVEN_ZIP_MAGIC + b"payload"
 
 
-def fake_get(answers: dict[str, bytes | None | Exception]):
-    """answers: url -> bytes, None (404), or an exception to raise. Records every url asked for."""
+def fake_download(answers: dict[str, bytes | None | Exception]):
+    """answers: url -> file bytes, None (404), or an exception to raise. Records every url asked for."""
     asked: list[str] = []
 
-    def get(url: str) -> bytes | None:
+    def download(url: str, dest: Path, progress) -> int | None:
         asked.append(url)
         answer = answers.get(url)
         if isinstance(answer, Exception):
             raise answer
-        return answer
+        if answer is None:
+            return None
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(answer)
+        if progress:
+            progress(len(answer), len(answer))
+        return len(answer)
 
-    return get, asked
+    return download, asked
+
+
+def store(day: date, data: bytes = ARCHIVE) -> None:
+    tcgcsv.archive_path(day).parent.mkdir(parents=True, exist_ok=True)
+    tcgcsv.archive_path(day).write_bytes(data)
 
 
 @pytest.fixture(autouse=True)
@@ -36,8 +49,8 @@ def test_urls_and_paths(tmp_path, monkeypatch):
 def test_fetches_missing_days_and_stores_them_as_downloaded(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     d1, d2 = date(2026, 9, 20), date(2026, 9, 21)
-    get, asked = fake_get({tcgcsv.archive_url(d1): ARCHIVE, tcgcsv.archive_url(d2): ARCHIVE})
-    res = tcgcsv.ingest(d1, d2, get=get)
+    download, asked = fake_download({tcgcsv.archive_url(d1): ARCHIVE, tcgcsv.archive_url(d2): ARCHIVE})
+    res = tcgcsv.ingest(d1, d2, download=download)
     assert res.fetched == [d1, d2]
     assert tcgcsv.archive_path(d1).read_bytes() == ARCHIVE
     assert tcgcsv.stored_days() == [d1, d2]
@@ -48,9 +61,9 @@ def test_fetches_missing_days_and_stores_them_as_downloaded(tmp_path, monkeypatc
 def test_stored_days_are_skipped_without_a_request(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     d1, d2 = date(2026, 9, 20), date(2026, 9, 21)
-    tcgcsv.save(d1, ARCHIVE)
-    get, asked = fake_get({tcgcsv.archive_url(d2): ARCHIVE})
-    res = tcgcsv.ingest(d1, d2, get=get)
+    store(d1)
+    download, asked = fake_download({tcgcsv.archive_url(d2): ARCHIVE})
+    res = tcgcsv.ingest(d1, d2, download=download)
     assert res.skipped == 1
     assert res.fetched == [d2]
     assert asked == [tcgcsv.archive_url(d2)]
@@ -59,8 +72,8 @@ def test_stored_days_are_skipped_without_a_request(tmp_path, monkeypatch):
 def test_unpublished_day_is_pending_and_not_stored(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     d = date(2026, 9, 22)
-    get, _ = fake_get({tcgcsv.archive_url(d): None})
-    res = tcgcsv.ingest(d, d, get=get)
+    download, _ = fake_download({tcgcsv.archive_url(d): None})
+    res = tcgcsv.ingest(d, d, download=download)
     assert res.pending == [d]
     assert tcgcsv.stored_days() == []
 
@@ -68,10 +81,10 @@ def test_unpublished_day_is_pending_and_not_stored(tmp_path, monkeypatch):
 def test_failed_day_is_reported_and_the_run_continues(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     d1, d2 = date(2026, 9, 20), date(2026, 9, 21)
-    get, _ = fake_get(
-        {tcgcsv.archive_url(d1): tcgcsv.FetchError("HTTP 503"), tcgcsv.archive_url(d2): ARCHIVE}
+    download, _ = fake_download(
+        {tcgcsv.archive_url(d1): net.FetchError("HTTP 503"), tcgcsv.archive_url(d2): ARCHIVE}
     )
-    res = tcgcsv.ingest(d1, d2, get=get)
+    res = tcgcsv.ingest(d1, d2, download=download)
     assert res.failed == [(d1, "HTTP 503")]
     assert res.fetched == [d2]
 
@@ -79,16 +92,16 @@ def test_failed_day_is_reported_and_the_run_continues(tmp_path, monkeypatch):
 def test_non_7z_download_is_rejected_and_nothing_is_written(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     d = date(2026, 9, 21)
-    get, _ = fake_get({tcgcsv.archive_url(d): b"<html>maintenance</html>"})
-    res = tcgcsv.ingest(d, d, get=get)
+    download, _ = fake_download({tcgcsv.archive_url(d): b"<html>maintenance</html>"})
+    res = tcgcsv.ingest(d, d, download=download)
     assert [day for day, _ in res.failed] == [d]
     assert not tcgcsv.store_dir().exists() or not any(tcgcsv.store_dir().iterdir())
 
 
 def test_start_is_clamped_to_the_first_archived_day(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    get, asked = fake_get({})
-    tcgcsv.ingest(date(2023, 1, 1), date(2024, 2, 9), get=get)
+    download, asked = fake_download({})
+    tcgcsv.ingest(date(2023, 1, 1), date(2024, 2, 9), download=download)
     assert asked == [tcgcsv.archive_url(date(2024, 2, 8)), tcgcsv.archive_url(date(2024, 2, 9))]
 
 
@@ -96,36 +109,32 @@ def test_requests_are_paced_but_not_before_the_first(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     sleeps: list[float] = []
     monkeypatch.setattr(tcgcsv.time, "sleep", sleeps.append)
-    get, _ = fake_get({})
-    tcgcsv.ingest(date(2026, 9, 19), date(2026, 9, 21), delay=0.5, get=get)
+    download, _ = fake_download({})
+    tcgcsv.ingest(date(2026, 9, 19), date(2026, 9, 21), delay=0.5, download=download)
     assert sleeps == [0.5, 0.5]
 
 
 def test_unrelated_files_in_the_archive_folder_are_ignored(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    tcgcsv.save(date(2026, 9, 21), ARCHIVE)
+    store(date(2026, 9, 21))
     (tcgcsv.store_dir() / "prices-garbage.ppmd.7z").write_bytes(ARCHIVE)
     (tcgcsv.store_dir() / "prices-2026-09-22.ppmd.7z.part").write_bytes(b"half")
     assert tcgcsv.stored_days() == [date(2026, 9, 21)]
 
 
-def test_404_returns_none_and_other_http_errors_retry_then_raise(monkeypatch):
-    import urllib.error
-
-    calls = []
-
-    def fake_urlopen(req, timeout):
-        calls.append(req.full_url)
-        code = 404 if "404" in req.full_url else 503
-        raise urllib.error.HTTPError(req.full_url, code, "x", {}, None)
-
-    monkeypatch.setattr(tcgcsv.urllib.request, "urlopen", fake_urlopen)
-    assert tcgcsv._get("https://example.test/404") is None
-    assert len(calls) == 1
-    with pytest.raises(tcgcsv.FetchError, match="HTTP 503"):
-        tcgcsv._get("https://example.test/503", retries=2)
-    assert len(calls) == 4
+def test_meter_gets_the_day_and_byte_counts(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    d = date(2026, 9, 21)
+    download, _ = fake_download({tcgcsv.archive_url(d): ARCHIVE})
+    seen = []
+    tcgcsv.ingest(d, d, download=download, meter=lambda day, done, total: seen.append((day, done, total)))
+    assert seen == [(d, len(ARCHIVE), len(ARCHIVE))]
 
 
-def test_user_agent_identifies_the_tool():
-    assert tcgcsv.HEADERS["User-Agent"].startswith("keltzbm-mtg/")
+def test_rejected_download_leaves_nothing_stored(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    d = date(2026, 9, 21)
+    download, _ = fake_download({tcgcsv.archive_url(d): b"<html>maintenance</html>"})
+    res = tcgcsv.ingest(d, d, download=download)
+    assert not tcgcsv.archive_path(d).exists()
+    assert "7z" in res.failed[0][1]

@@ -1,6 +1,8 @@
 """The only user-facing surface. Everything here is a thin wrapper."""
 
 import shutil
+import sys
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -44,6 +46,35 @@ def init() -> None:
         typer.echo(f"  ! `{key}` in config is ignored: {why}", err=True)
 
 
+def _live(text: str) -> None:
+    """Rewrite the current terminal line in place."""
+    typer.echo(f"\r\x1b[2K{text}", nl=False)
+
+
+def _size(done: int, total: int | None) -> str:
+    return f"{done / 1e6:,.1f}" + (f" / {total / 1e6:,.1f}" if total else "") + " MB"
+
+
+def _say(line: str) -> None:
+    """A finished line. On a terminal it replaces any live progress line."""
+    if sys.stdout.isatty():
+        _live(line + "\n")
+    else:
+        typer.echo(line)
+
+
+def _download_meter(label: str):
+    """A progress callback for one download, or None when no one is watching
+    (the scheduled job's log shouldn't fill with carriage returns)."""
+    if not sys.stdout.isatty():
+        return None
+
+    def show(done: int, total: int | None) -> None:
+        _live(f"{label}  {_size(done, total)}")
+
+    return show
+
+
 @ingest_app.command("scryfall")
 def ingest_scryfall(
     force: bool = typer.Option(False, help="Download even if under a day old"),
@@ -52,7 +83,8 @@ def ingest_scryfall(
     """Download Scryfall's bulk card data and load it."""
     from mtg.ingest import scryfall
 
-    typer.echo(scryfall.refresh(force=force))
+    msg = scryfall.refresh(force=force, progress=_download_meter("Scryfall bulk data"))
+    _say(msg)
     if not no_sync:
         _run_sync(offline=True)
 
@@ -131,8 +163,6 @@ def ingest_mtgo(
     delay: float = typer.Option(1.0, help="Seconds between page requests"),
 ) -> None:
     """Fetch MTGO decklists (league 5-0s, challenges, showcases) from mtgo.com."""
-    from datetime import date, timedelta
-
     from mtg.ingest import mtgo
 
     since = date.today() - timedelta(days=days)
@@ -151,15 +181,18 @@ def ingest_tcgcsv(
     delay: float = typer.Option(0.25, help="Seconds between downloads"),
 ) -> None:
     """Download tcgcsv's daily TCGplayer price archives (every game) that aren't stored yet."""
-    from datetime import date, timedelta
-
     from mtg.ingest import tcgcsv
 
     try:
         start = date.fromisoformat(since) if since else date.today() - timedelta(days=days)
     except ValueError as e:
         raise typer.BadParameter("--since must be YYYY-MM-DD") from e
-    res = tcgcsv.ingest(start, delay=delay, progress=typer.echo)
+
+    def streaming(day: date, done: int, total: int | None) -> None:
+        _live(f"{day}  {_size(done, total)}")
+
+    meter = streaming if sys.stdout.isatty() else None
+    res = tcgcsv.ingest(start, delay=delay, progress=_say, meter=meter)
     typer.echo(_archive_summary(res))
     for day, err in res.failed:
         typer.echo(f"  ! {day}: {err}", err=True)
@@ -180,8 +213,6 @@ def _archive_summary(res) -> str:
 
 
 def _events(fmt: list[str], days: int, kind: list[str] | None):
-    from datetime import date, timedelta
-
     from mtg.ingest import mtgo
 
     events = mtgo.load(_formats(fmt), date.today() - timedelta(days=days), _kinds(kind))
@@ -407,11 +438,10 @@ def _run_sync(offline: bool = True) -> None:
 
     cfg0 = config.load()
     if not offline:
-        from datetime import date, timedelta
-
         from mtg.ingest import scryfall, tcgcsv
 
-        typer.echo(scryfall.refresh())
+        msg = scryfall.refresh(progress=_download_meter("Scryfall bulk data"))
+        _say(msg)
         try:
             res = tcgcsv.ingest(date.today() - timedelta(days=3))
             typer.echo(f"price archive: {len(res.fetched)} new days · {len(tcgcsv.stored_days())} stored")

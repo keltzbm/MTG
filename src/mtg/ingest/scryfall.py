@@ -1,8 +1,9 @@
 """Scryfall bulk data: download the default-cards file, load it into DuckDB.
 
 Published daily; carries oracle ids, legalities, and prices — including
-MTGO tix (Scryfall sources those from Cardhoarder). No scraping, no rate
-limits. Scryfall asks every client to send a User-Agent and Accept header.
+MTGO tix (Scryfall sources those from Cardhoarder). One API request for the
+index, then one file from *.scryfall.io, which has no rate limit — at most
+once a day, since prices only change daily. Headers and 429 handling: mtg.net.
 
 Since 2026-07-20 bulk files are gzipped JSON Lines only, linked from
 `jsonl_download_uri`. The old `download_uri` (one big JSON array) is gone;
@@ -10,22 +11,16 @@ it's still read if present so an older cached file keeps working.
 """
 
 import json
-import shutil
-import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb
 
-from mtg import __version__
+from mtg import net
 from mtg.config import data_dir
 from mtg.store.db import connect, db_path
 
 BULK_INDEX = "https://api.scryfall.com/bulk-data"
-HEADERS = {
-    "User-Agent": f"keltzbm-mtg/{__version__} (github.com/keltzbm/MTG)",
-    "Accept": "application/json",
-}
 
 COLUMNS = {
     "id": "VARCHAR",
@@ -53,19 +48,17 @@ COLUMNS = {
 }
 
 
-def _get(url: str) -> urllib.request.addinfourl:
-    return urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=60)
-
-
 def meta_path() -> Path:
     return data_dir() / "bulk-meta.json"
 
 
 def remote_info(kind: str = "default_cards") -> dict:
-    with _get(BULK_INDEX) as r:
-        for entry in json.load(r)["data"]:
-            if entry["type"] == kind:
-                return entry
+    body = net.get(BULK_INDEX, accept="application/json")
+    if body is None:
+        raise RuntimeError(f"Scryfall's bulk index is missing ({BULK_INDEX})")
+    for entry in json.loads(body)["data"]:
+        if entry["type"] == kind:
+            return entry
     raise RuntimeError(f"no bulk file of type {kind}")
 
 
@@ -86,23 +79,22 @@ def download_url(info: dict) -> tuple[str, str]:
     raise RuntimeError(f"Scryfall bulk entry has no download link: {sorted(info)}")
 
 
-def download(dest_dir: Path | None = None) -> tuple[Path, dict]:
+def download(dest_dir: Path | None = None, progress: net.Progress | None = None) -> tuple[Path, dict]:
     dest_dir = dest_dir or data_dir()
-    dest_dir.mkdir(parents=True, exist_ok=True)
     info = remote_info()
     url, filename = download_url(info)
     dest = dest_dir / filename
-    tmp = dest_dir / (filename + ".part")
-    with _get(url) as r, tmp.open("wb") as f:
-        shutil.copyfileobj(r, f, length=1 << 20)
-    with tmp.open("rb") as f:
+    fresh = dest_dir / (filename + ".new")  # checked before it replaces the last good file
+    if net.download(url, fresh, progress=progress) is None:
+        raise RuntimeError(f"Scryfall's bulk file is missing ({url})")
+    with fresh.open("rb") as f:
         magic = f.read(2)
     if filename.endswith(".gz") and magic != b"\x1f\x8b":
-        tmp.unlink()
+        fresh.unlink()
         raise RuntimeError("downloaded bulk file isn't gzip — Scryfall's format may have changed again")
-    tmp.replace(dest)
+    fresh.replace(dest)
     for old in dest_dir.glob("default-cards.*"):
-        if old != dest and not old.name.endswith(".part"):
+        if old != dest and not old.name.endswith((".part", ".new")):
             old.unlink()
     return dest, info
 
@@ -165,10 +157,10 @@ def _create(con: duckdb.DuckDBPyConnection, source: str) -> None:
     """)
 
 
-def refresh(force: bool = False, max_age_hours: float = 24) -> str:
+def refresh(force: bool = False, max_age_hours: float = 24, progress: net.Progress | None = None) -> str:
     if not force and not is_stale(max_age_hours):
         return "card data is current"
-    path, info = download()
+    path, info = download(progress=progress)
     rows = load(path)
     meta_path().write_text(
         json.dumps(

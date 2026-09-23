@@ -16,21 +16,15 @@ import hashlib
 import json
 import re
 import time
-import urllib.error
-import urllib.request
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
 
-from mtg import __version__
+from mtg import net
 from mtg.config import data_dir
 
 BASE = "https://www.mtgo.com"
-HEADERS = {
-    "User-Agent": f"keltzbm-mtg/{__version__} (github.com/keltzbm/MTG)",
-    "Accept": "text/html",
-}
 KINDS = ("league", "challenge", "showcase", "qualifier", "preliminary", "other")
 
 _DATA = re.compile(r"window\.MTGO\.decklists\.data\s*=\s*")
@@ -225,22 +219,9 @@ def load(
 # ---- fetching ------------------------------------------------------------------
 
 
-def _get(url: str, retries: int = 2, timeout: float = 20) -> str:
-    """GET with a short retry — mtgo.com occasionally stalls instead of answering."""
-    req = urllib.request.Request(url, headers=HEADERS)
-    for attempt in range(retries + 1):
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                return r.read().decode("utf-8", errors="replace")
-        except (TimeoutError, urllib.error.URLError, ConnectionError) as e:
-            if attempt == retries:
-                raise FetchError(f"no answer after {retries + 1} tries ({getattr(e, 'reason', e)})") from e
-            time.sleep(2 * (attempt + 1))
-    raise AssertionError("unreachable")
-
-
-class FetchError(RuntimeError):
-    """mtgo.com didn't answer."""
+def _get(url: str) -> str:
+    """A page, with a short timeout — mtgo.com occasionally stalls instead of answering."""
+    return net.get_text(url, accept="text/html", timeout=20)
 
 
 def _months(start: date, end: date) -> list[tuple[int, int]]:

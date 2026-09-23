@@ -68,6 +68,7 @@ pCloud syncs. Config is `~/.config/mtg/config.toml`.
 ```
 src/mtg/
 ├── config.py       XDG paths, config.toml
+├── net.py          HTTP for every source: User-Agent, retries, 429s, streamed downloads
 ├── vault.py        read deck notes, frontmatter, buy lines — read-only
 ├── sync.py         the work behind `mtg sync`, CLI- and DB-free
 ├── models/         Printing, Prices, Deck, DeckEntry, Holding
