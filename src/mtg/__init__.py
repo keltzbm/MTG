@@ -6,6 +6,6 @@ Invariants:
   * The vault is a render target; only _generated/ and _log/ are written.
 """
 
-__version__ = "0.3.0.dev0"
+__version__ = "0.3.0"
 
 WUBRG = ("W", "U", "B", "R", "G")

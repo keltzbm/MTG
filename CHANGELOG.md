@@ -4,7 +4,9 @@ All notable changes, newest first. Format: [Keep a Changelog](https://keepachang
 versions follow [Semantic Versioning](https://semver.org/) (0.x: anything may change at a minor bump).
 Work in progress goes under **Unreleased** and moves into a version heading at release time.
 
-## [Unreleased] — toward 0.3.0
+## [Unreleased]
+
+## [0.3.0] — 2026-09-23
 
 ### Added
 - `mtg ingest tcgcsv`: daily TCGplayer price archives from tcgcsv.com, every game in one file per day,
@@ -25,7 +27,8 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 - `ruff check src tests` is clean: Typer's `Option`/`Argument` defaults are allowed in config, ambiguous
   single-letter names renamed, long test strings split. No behavior change.
 - Resolving a collection loads every printing in one query and looks rows up in memory, instead of one
-  query per ManaBox row (twice per row in the collection summary). `mtg sync` and `mtg own` do less work.
+  query per ManaBox row (twice per row in the collection summary). `mtg sync --offline` went from 6.0 s to
+  0.24 s on a three-deck vault.
 - Owned counts are computed once per sync instead of once per deck.
 - Clearer code in a few places: the deck-price builder, decklist set codes, and pairs that must line up
   one-to-one now fail loudly (`zip(strict=True)`) instead of silently truncating.
