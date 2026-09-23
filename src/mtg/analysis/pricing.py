@@ -26,23 +26,23 @@ class DeckPrice:
 
     @property
     def usd_total(self) -> float:
-        return round(sum((l.usd or 0) * l.needed for l in self.lines), 2)
+        return round(sum((line.usd or 0) * line.needed for line in self.lines), 2)
 
     @property
     def usd_to_buy(self) -> float:
-        return round(sum((l.usd or 0) * l.to_buy for l in self.lines), 2)
+        return round(sum((line.usd or 0) * line.to_buy for line in self.lines), 2)
 
     @property
     def tix_total(self) -> float:
-        return round(sum((l.tix or 0) * l.needed for l in self.lines), 2)
+        return round(sum((line.tix or 0) * line.needed for line in self.lines), 2)
 
     @property
     def missing_on_mtgo(self) -> list[str]:
-        return [l.name for l in self.lines if l.tix is None]
+        return [line.name for line in self.lines if line.tix is None]
 
     @property
     def unpriced(self) -> list[str]:
-        return [l.name for l in self.lines if l.usd is None and l.to_buy]
+        return [line.name for line in self.lines if line.usd is None and line.to_buy]
 
 
 def price(rows: list[Row], catalog: Catalog) -> DeckPrice:

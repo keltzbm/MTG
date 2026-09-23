@@ -57,8 +57,8 @@ def decklist_block(text: str) -> str | None:
         if f:
             return f.group(1)
     for f in FENCE.finditer(text):
-        lines = [l for l in f.group(1).splitlines() if l.strip()]
-        if lines and sum(bool(LINE.match(l)) for l in lines) >= len(lines) * 0.6:
+        lines = [line for line in f.group(1).splitlines() if line.strip()]
+        if lines and sum(bool(LINE.match(line)) for line in lines) >= len(lines) * 0.6:
             return f.group(1)
     return None
 

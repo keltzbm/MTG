@@ -48,7 +48,7 @@ def deck_data(
     imports: dict[str, str] | None = None,
 ) -> str:
     s = summary(rows)
-    buy = [(r, l) for r, l in zip(rows, dp.lines, strict=False) if r.status == BUY]
+    buy = [(row, line) for row, line in zip(rows, dp.lines, strict=False) if row.status == BUY]
     out = [
         "---",
         f"title: {deck.slug}-data",
@@ -69,10 +69,11 @@ def deck_data(
     ]
     if buy:
         out += ["## Buy", "", "| Buy | Card | Paper | MTGO |", "|---|---|---|---|"]
-        for r, l in sorted(buy, key=lambda x: -(x[1].usd or 0)):
-            note = f" (own {r.owned} of {r.needed})" if r.partial else ""
+        for row, line in sorted(buy, key=lambda pair: -(pair[1].usd or 0)):
+            note = f" (own {row.owned} of {row.needed})" if row.partial else ""
             out.append(
-                f"| {MARK[BUY]} {r.shortfall} | [[{r.name}]]{note} | {_money(l.usd)} | {_tix(l.tix)} |"
+                f"| {MARK[BUY]} {row.shortfall} | [[{row.name}]]{note} "
+                f"| {_money(line.usd)} | {_tix(line.tix)} |"
             )
         out.append("")
     if dp.missing_on_mtgo:

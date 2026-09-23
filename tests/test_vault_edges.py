@@ -32,7 +32,10 @@ def _note(body, game="mtg"):
 
 
 def test_heading_containing_important_is_not_an_import_heading():
-    body = "## Important interactions\n\n```\n1 Combo Piece\n```\n\n## Moxfield import\n\n```\nDeck\n1 Sol Ring\n```\n"
+    body = (
+        "## Important interactions\n\n```\n1 Combo Piece\n```\n\n"
+        "## Moxfield import\n\n```\nDeck\n1 Sol Ring\n```\n"
+    )
     assert vault.decklist_block(_note(body)).strip() == "Deck\n1 Sol Ring"
 
 

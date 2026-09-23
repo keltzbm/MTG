@@ -22,6 +22,8 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 - **Breaking:** `mtg schedule --at HH:MM` → `mtg schedule set HH:MM`; `--remove` → `remove`.
 - The launchd plist is written with `plistlib` instead of a string template.
 - MTGO ingest paces the monthly index requests as well as event pages (long backfills).
+- `ruff check src tests` is clean: Typer's `Option`/`Argument` defaults are allowed in config, ambiguous
+  single-letter names renamed, long test strings split. No behavior change.
 
 ### Removed
 - **Breaking:** sealed precon lists (`precons/`) and the `precons` config key. A precon counts as owned
