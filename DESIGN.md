@@ -12,7 +12,8 @@ Two problems motivated the rewrite, both hit in practice:
 1. **Wrong printings on import** — decklists matched by name, so a Moxfield
    import picked arbitrary printings.
 2. **Ownership checks returning false** — a precon's contents weren't in the
-   collection export, so 30 owned cards read as "need to buy."
+   collection export, so 30 owned cards read as "need to buy." Fixed by
+   scanning precons into ManaBox: the export is the one record of what you own.
 
 Both are the same bug: **name is not a key.**
 
@@ -34,7 +35,7 @@ Both are the same bug: **name is not a key.**
 ```
 ~/atelier/library/tcg/mtg/
 ├── _generated/     rewritten every sync — only when content changes
-│   ├── <deck>.data.md          owned/precon/buy counts, paper and MTGO totals, buy table
+│   ├── <deck>.data.md          owned/buy counts, paper and MTGO totals, buy table
 │   └── collection-summary.md
 ├── _log/           append-only
 │   ├── prices.md               one snapshot per day of every unticked #mtg/buy card
@@ -55,7 +56,7 @@ pCloud syncs. Config is `~/.config/mtg/config.toml`.
 
 | | | Status |
 |---|---|---|
-| 1 | Collection truth: Scryfall + ManaBox + precons, `mtg own` | done |
+| 1 | Collection truth: Scryfall + ManaBox, `mtg own` | done |
 | 2 | Obsidian export: `_generated/`, `mtg sync` | done |
 | 3 | Analysis: mana demand/supply, curve, legality, playset eligibility | legality + playsets done; mana stubs |
 | 4 | Prices and logging: paper + MTGO, price log, list versions | done — log rollup still to do |
@@ -70,11 +71,10 @@ src/mtg/
 ├── vault.py        read deck notes, frontmatter, buy lines — read-only
 ├── sync.py         the work behind `mtg sync`, CLI- and DB-free
 ├── models/         Printing, Prices, Deck, DeckEntry, Holding
-├── ingest/         scryfall, manabox, decklist, precon, arena, mtgo, tcgcsv
+├── ingest/         scryfall, manabox, decklist, arena, mtgo, tcgcsv
 ├── store/          Catalog protocol + DuckDB implementation
 ├── analysis/       resolve, ownership, pricing, colors, legality, metagame, mana*
 ├── export/         formats (moxfield/manabox/mtgo/tcgplayer), obsidian
 └── cli.py          typer app — the only entry point
-precons/            sealed precon lists (Commander / Deck sections)
 tests/              run against an in-memory Catalog; no download needed
 ```

@@ -95,7 +95,6 @@ def collection_summary(holdings: list[Holding], catalog: Catalog, today: str) ->
             usd = catalog.prices(h.oracle_id).usd
         valued.append((usd or 0) * h.quantity)
     top = sorted(zip(valued, counted, strict=False), key=lambda x: -x[0])[:15]
-    precons = Counter(h.source for h in holdings if h.source.startswith("precon:"))  # noqa: F841
     lines = [
         "---",
         "title: collection-summary",
@@ -108,8 +107,6 @@ def collection_summary(holdings: list[Holding], catalog: Catalog, today: str) ->
         f"**{total:,} cards · {unique:,} unique · ~{_money(sum(valued))}** (ManaBox export)",
         "",
     ]
-    if precons:
-        lines += ["Sealed precons counted as owned: " + ", ".join(p.split(":", 1)[1] for p in precons), ""]
     lines += ["## Most valuable", "", "| Card | Copies | Value |", "|---|---|---|"]
     lines += [f"| [[{catalog.name(h.oracle_id)}]] | {h.quantity} | {_money(v)} |" for v, h in top]
     return "\n".join(lines) + "\n"

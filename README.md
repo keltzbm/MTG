@@ -85,9 +85,8 @@ mtg schedule remove
 
 | What | Where |
 |---|---|
-| Config | `~/.config/mtg/config.toml` — vault path, sealed precons you own |
+| Config | `~/.config/mtg/config.toml` — vault path |
 | Card data, collection, sync state, MTGO events, price archive | `~/.local/share/mtg/` — outside the synced vault |
-| Precon lists | `precons/` in this repo |
 | Output | `tcg/mtg/_generated/` and `tcg/mtg/_log/` in the vault — nothing else |
 
 ## Invariants

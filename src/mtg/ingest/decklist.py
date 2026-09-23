@@ -1,4 +1,4 @@
-"""Plain-text decklists: Moxfield, Archidekt, MTGA, MTGO .txt, precon files.
+"""Plain-text decklists: Moxfield, Archidekt, MTGA, MTGO .txt.
 
 Accepted line shapes:
     1 Sol Ring

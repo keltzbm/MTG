@@ -1,18 +1,19 @@
 """Settings from $XDG_CONFIG_HOME/mtg/config.toml, with sensible defaults.
 
-    vault   = "~/atelier/library"
-    precons = []
+    vault = "~/atelier/library"
 
-Precons listed here are sealed boxes you own whose cards are NOT in the
-ManaBox export. Anything already scanned into ManaBox should not be listed.
+What you own comes from the ManaBox export alone: scan a precon into ManaBox
+to count it.
 """
 
 import os
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+OBSOLETE_KEYS = {
+    "precons": "sealed precons are no longer counted; scan them into ManaBox and delete this line",
+}
 
 
 def _xdg(var: str, default: str) -> Path:
@@ -34,18 +35,13 @@ def data_dir() -> Path:
 DEFAULT_CONFIG = """\
 # mtg configuration
 vault = "~/atelier/library"
-
-# Sealed precons you own whose cards AREN'T scanned into ManaBox. They count
-# as owned. Leave empty once a precon is scanned, or it's counted twice.
-# Names match files in the repo's precons/ folder, e.g. "M3C-tricky-terrain".
-precons = []
 """
 
 
 @dataclass
 class Config:
     vault: Path
-    precons: list[str] = field(default_factory=list)
+    obsolete: dict[str, str] | None = None  # key -> why it's ignored
 
     @property
     def mtg_dir(self) -> Path:
@@ -63,17 +59,13 @@ class Config:
     def downloads(self) -> Path:
         return Path.home() / "Downloads"
 
-    @property
-    def precon_dir(self) -> Path:
-        return REPO_ROOT / "precons"
-
 
 def load() -> Config:
     path = config_path()
     raw = tomllib.loads(path.read_text()) if path.exists() else tomllib.loads(DEFAULT_CONFIG)
     return Config(
         vault=Path(raw.get("vault", "~/atelier/library")).expanduser(),
-        precons=list(raw.get("precons", [])),
+        obsolete={k: why for k, why in OBSOLETE_KEYS.items() if k in raw} or None,
     )
 
 

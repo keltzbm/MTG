@@ -1,10 +1,10 @@
-"""ManaBox, Arena, precon lists, and config: the files the tool reads."""
+"""ManaBox, Arena, and config: the files the tool reads."""
 
 import pytest
 
 from mtg import config
 from mtg.analysis.resolve import counts, resolve_holdings
-from mtg.ingest import arena, manabox, precon
+from mtg.ingest import arena, manabox
 from mtg.models import Holding
 
 MANABOX = (
@@ -83,34 +83,11 @@ def test_arena_csv_without_usable_columns_is_an_error(tmp_path):
         arena.load(p)
 
 
-def test_precon_lists_and_missing_precons(tmp_path):
-    (tmp_path / "M3C-tricky-terrain.txt").write_text(
-        "Commander\n1 Omo, Queen of Vesuva\n\nDeck\n1 Sol Ring\n"
-    )
-    hs = precon.load("M3C-tricky-terrain", tmp_path)
-    assert [(h.name, h.source) for h in hs] == [
-        ("Omo, Queen of Vesuva", "precon:M3C-tricky-terrain"),
-        ("Sol Ring", "precon:M3C-tricky-terrain"),
-    ]
-    assert precon.available(tmp_path) == ["M3C-tricky-terrain"]
-    with pytest.raises(FileNotFoundError):
-        precon.load("nope", tmp_path)
-
-
-def test_repo_precon_files_parse_to_full_decks():
-    """The lists shipped in precons/ must parse to 100 cards with a commander."""
-    names = precon.available(config.REPO_ROOT / "precons")
-    assert names, "no precon lists found"
-    for name in names:
-        hs = precon.load(name, config.REPO_ROOT / "precons")
-        assert sum(h.quantity for h in hs) == 100, name
-
-
 def test_config_defaults_and_xdg(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     cfg = config.load()
-    assert cfg.precons == [] and cfg.vault.name == "library"
+    assert cfg.obsolete is None and cfg.vault.name == "library"
     assert config.data_dir() == tmp_path / "data" / "mtg"
     assert cfg.mtg_dir == cfg.vault / "tcg" / "mtg"
     assert cfg.collection_csv == tmp_path / "data" / "mtg" / "collection.csv"
@@ -122,5 +99,5 @@ def test_config_file_is_read_and_never_overwritten(tmp_path, monkeypatch):
     path.write_text('vault = "~/elsewhere"\nprecons = ["M3C-tricky-terrain"]\n')
     assert config.write_default() == path
     cfg = config.load()
-    assert cfg.precons == ["M3C-tricky-terrain"]
+    assert set(cfg.obsolete) == {"precons"}
     assert "~" not in str(cfg.vault) and cfg.vault.name == "elsewhere"

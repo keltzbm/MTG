@@ -27,8 +27,8 @@ def test_moxfield_pins_only_owned_printings(cat):
     assert text.startswith("Commander\n1 Aesi, Tyrant of Gyre Strait\n\nDeck\n")
 
 
-def test_precon_holdings_are_never_used_as_pins(cat):
-    hs = [Holding("Sol Ring", 1, set_code="M3C", collector_number="283", source="precon:x")]
+def test_non_manabox_holdings_are_never_used_as_pins(cat):
+    hs = [Holding("Sol Ring", 1, set_code="M3C", collector_number="283", source="arena")]
     resolve_holdings(hs, cat)
     assert formats.owned_printings(hs) == {}
 

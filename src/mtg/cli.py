@@ -28,7 +28,7 @@ def _catalog():
 def _setup():
     cfg = config.load()
     cat = _catalog()
-    inv = syncmod.inventory(cfg.collection_csv, cfg.precons, cfg.precon_dir, cat)
+    inv = syncmod.inventory(cfg.collection_csv, cat)
     return cfg, cat, inv
 
 
@@ -40,7 +40,8 @@ def init() -> None:
     typer.echo(f"config     {path}")
     typer.echo(f"vault      {cfg.vault}")
     typer.echo(f"data       {config.data_dir()}")
-    typer.echo(f"precons    {', '.join(cfg.precons) or '(none)'}")
+    for key, why in (cfg.obsolete or {}).items():
+        typer.echo(f"  ! `{key}` in config is ignored: {why}", err=True)
 
 
 @ingest_app.command("scryfall")
@@ -321,7 +322,7 @@ def own(
             raise typer.BadParameter("no Arena collection yet — run: mtg ingest arena <file>")
         inv = syncmod.arena_inventory(cfg.arena_list, cat)
     else:
-        inv = syncmod.inventory(cfg.collection_csv, cfg.precons, cfg.precon_dir, cat)
+        inv = syncmod.inventory(cfg.collection_csv, cat)
     rep = syncmod.analyse(vault.find(cfg.mtg_dir, deck), inv, cat)
     buy_word = "Craft" if on_arena else "Buy"
 

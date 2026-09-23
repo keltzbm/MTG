@@ -1,6 +1,6 @@
 """Own / buy. Milestone 1 — the thing needed twice before it existed.
 
-Two states only. Sealed precons listed in config count as owned.
+Two states only. Owned means scanned into ManaBox.
 """
 
 from collections import Counter

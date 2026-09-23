@@ -4,17 +4,6 @@ from mtg.analysis.ownership import BUY, OWN, diff, summary
 from mtg.analysis.resolve import counts, resolve_deck, resolve_holdings
 from mtg.ingest.decklist import parse_text
 from mtg.models import Holding
-from mtg.sync import Inventory
-
-
-def test_precon_holdings_count_as_owned(cat):
-    """A sealed precon listed in config must not read as 'need to buy'."""
-    hs = [Holding("Cyclonic Rift", 1, source="precon:x"), Holding("Sol Ring", 1)]
-    resolve_holdings(hs, cat)
-    deck = parse_text("1 Sol Ring\n1 Cyclonic Rift\n1 Aesi, Tyrant of Gyre Strait\n")
-    resolve_deck(deck, cat)
-    rows = {r.name: r.status for r in diff(deck, Inventory(hs).owned, cat)}
-    assert rows == {"Sol Ring": OWN, "Cyclonic Rift": OWN, "Aesi, Tyrant of Gyre Strait": BUY}
 
 
 def test_name_is_not_a_key_holdings_resolve_by_printing_first(cat):

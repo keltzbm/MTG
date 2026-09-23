@@ -23,6 +23,11 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 - The launchd plist is written with `plistlib` instead of a string template.
 - MTGO ingest paces the monthly index requests as well as event pages (long backfills).
 
+### Removed
+- **Breaking:** sealed precon lists (`precons/`) and the `precons` config key. A precon counts as owned
+  only once it's scanned into ManaBox, so nothing is ever counted twice. `mtg init` flags a leftover
+  `precons` line; it's otherwise ignored.
+
 ### Fixed
 - Maybeboard / Considering / Tokens sections in a decklist were counted as deck cards, so `mtg own`
   listed cards you were only considering. They're skipped now.

@@ -11,5 +11,5 @@ class Holding:
     set_code: str | None = None
     collector_number: str | None = None
     foil: bool = False
-    source: str = "manabox"  # manabox | precon:<name>
+    source: str = "manabox"  # manabox | arena
     oracle_id: str | None = None
