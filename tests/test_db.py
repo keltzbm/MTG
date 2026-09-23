@@ -171,3 +171,17 @@ def test_card_data_from_before_oracle_text_gives_no_rules():
     con.execute(SCHEMA.replace("oracle_text VARCHAR, card_faces JSON,", ""))
     assert DuckCatalog(con).rules("o-lib") is None
     con.close()
+
+
+def test_printing_lookups(catalog):
+    p = catalog.printing("s3")
+    assert (p.oracle_id, p.name, p.set_code, p.collector_number) == ("o-sol", "Sol Ring", "c21", "1")
+    assert catalog.printing_at("C21", "1").scryfall_id == "s3"  # ManaBox writes set codes uppercase
+    assert catalog.printing_usd("s1") == 1.0
+    assert catalog.printing_usd("s2") is None  # printing exists, no paper price
+
+
+def test_unknown_printings_are_none(catalog):
+    assert catalog.printing("nope") is None
+    assert catalog.printing_at("zzz", "1") is None
+    assert catalog.printing_usd("nope") is None

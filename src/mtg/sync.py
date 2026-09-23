@@ -1,6 +1,8 @@
 """The work behind `mtg sync`, kept free of CLI and DuckDB so it's testable."""
 
+from collections import Counter
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 
 from mtg import vault
@@ -17,9 +19,10 @@ class Inventory:
     holdings: list[Holding]
     unresolved: list[str] = field(default_factory=list)
 
-    @property
-    def owned(self):
-        """Everything you have, as scanned into ManaBox."""
+    @cached_property
+    def owned(self) -> Counter:
+        """Copies owned per oracle_id. Computed once: holdings are resolved before
+        an Inventory is built and never change after."""
         return counts(self.holdings)
 
 

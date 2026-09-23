@@ -62,7 +62,7 @@ def parse_text(text: str, slug: str = "deck") -> Deck:
                 name=m["name"].strip(),
                 quantity=int(m["qty"]),
                 board=board,
-                set_code=(m["set"] or None) and m["set"].upper(),
+                set_code=m["set"].upper() if m["set"] else None,
                 collector_number=m["num"],
             )
         )

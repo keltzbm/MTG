@@ -58,7 +58,7 @@ pCloud syncs. Config is `~/.config/mtg/config.toml`.
 |---|---|---|
 | 1 | Collection truth: Scryfall + ManaBox, `mtg own` | done |
 | 2 | Obsidian export: `_generated/`, `mtg sync` | done |
-| 3 | Analysis: mana demand/supply, curve, legality, playset eligibility | legality + playsets done; mana stubs |
+| 3 | Analysis: mana demand/supply, curve, legality, playset eligibility | legality + playsets done; mana not started |
 | 4 | Prices and logging: paper + MTGO, price log, list versions | done — log rollup still to do |
 | 5 | Metagame ingest: MTGO decklists only | ingest + card stats done |
 | — | Export: Moxfield, ManaBox, MTGO .txt, TCGplayer mass entry, owned-printing pins | done |
@@ -73,7 +73,7 @@ src/mtg/
 ├── models/         Printing, Prices, Deck, DeckEntry, Holding
 ├── ingest/         scryfall, manabox, decklist, arena, mtgo, tcgcsv
 ├── store/          Catalog protocol + DuckDB implementation
-├── analysis/       resolve, ownership, pricing, colors, legality, metagame, mana*
+├── analysis/       resolve, ownership, pricing, colors, legality, metagame
 ├── export/         formats (moxfield/manabox/mtgo/tcgplayer), obsidian
 └── cli.py          typer app — the only entry point
 tests/              run against an in-memory Catalog; no download needed

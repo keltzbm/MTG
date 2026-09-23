@@ -78,7 +78,7 @@ class DuckCatalog:
                 WHERE oracle_id IS NOT NULL AND list_contains(games, 'arena')
                 GROUP BY oracle_id
             """).fetchall()
-        except Exception:
+        except duckdb.Error:
             return {}  # card data loaded before rarity was stored — re-run ingest
         return dict(rows)
 
@@ -154,20 +154,31 @@ class DuckCatalog:
     def is_basic(self, oracle_id: str) -> bool:
         return self.name(oracle_id).lower() in BASICS
 
-    def _printing(self, where: str, args: list) -> Printing | None:
-        row = self.con.execute(
-            f"SELECT scryfall_id, oracle_id, name, set_code, collector_number, frame, border_color "
-            f"FROM printings WHERE {where} LIMIT 1",
-            args,
-        ).fetchone()
-        return Printing(*row) if row else None
+    @cached_property
+    def _printings(self) -> tuple[dict[str, tuple], dict[tuple[str, str], str]]:
+        """(scryfall_id -> row, (set, collector number) -> scryfall_id), loaded in one
+        query. Resolving a collection looks up every ManaBox row; a query per row
+        was thousands of table scans per sync."""
+        rows = self.con.execute("""
+            SELECT scryfall_id, oracle_id, name, set_code, collector_number, frame, border_color, usd
+            FROM printings
+        """).fetchall()
+        by_id: dict[str, tuple] = {}
+        by_number: dict[tuple[str, str], str] = {}
+        for row in rows:
+            by_id[row[0]] = row
+            by_number.setdefault((row[3], row[4]), row[0])
+        return by_id, by_number
 
     def printing(self, scryfall_id: str) -> Printing | None:
-        return self._printing("scryfall_id = ?", [scryfall_id])
+        row = self._printings[0].get(scryfall_id)
+        return Printing(*row[:7]) if row else None
 
     def printing_at(self, set_code: str, collector_number: str) -> Printing | None:
-        return self._printing("set_code = lower(?) AND collector_number = ?", [set_code, collector_number])
+        """Scryfall set codes are lowercase; ManaBox writes them uppercase."""
+        scryfall_id = self._printings[1].get((set_code.lower(), collector_number))
+        return self.printing(scryfall_id) if scryfall_id else None
 
     def printing_usd(self, scryfall_id: str) -> float | None:
-        row = self.con.execute("SELECT usd FROM printings WHERE scryfall_id = ?", [scryfall_id]).fetchone()
-        return row[0] if row else None
+        row = self._printings[0].get(scryfall_id)
+        return row[7] if row else None

@@ -48,7 +48,7 @@ def deck_data(
     imports: dict[str, str] | None = None,
 ) -> str:
     s = summary(rows)
-    buy = [(row, line) for row, line in zip(rows, dp.lines, strict=False) if row.status == BUY]
+    buy = [(row, line) for row, line in zip(rows, dp.lines, strict=True) if row.status == BUY]
     out = [
         "---",
         f"title: {deck.slug}-data",
@@ -95,7 +95,7 @@ def collection_summary(holdings: list[Holding], catalog: Catalog, today: str) ->
         if usd is None:
             usd = catalog.prices(h.oracle_id).usd
         valued.append((usd or 0) * h.quantity)
-    top = sorted(zip(valued, counted, strict=False), key=lambda x: -x[0])[:15]
+    top = sorted(zip(valued, counted, strict=True), key=lambda x: -x[0])[:15]
     lines = [
         "---",
         "title: collection-summary",

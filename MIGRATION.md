@@ -10,7 +10,7 @@ checking anything out: `git show v0.1.0:classes.py`
 | `prices.py` | Replaced — prices ship in bulk data, paper and MTGO | `analysis/pricing.py` |
 | `classes.py` → `colorArchetypes` | Ported, WUBRG re-keyed | `analysis/colors.py` |
 | `classes.py` → dict-as-object | Dropped | `models/` |
-| `analysis.py` → `getDeckColors` | To port: demand vs. supply | `analysis/mana.py` (stub) |
+| `analysis.py` → `getDeckColors` | To port: demand vs. supply | not started |
 | `deckCreation.py` | Rewritten as list parsing + ownership | `ingest/decklist.py`, `analysis/ownership.py` |
 | `arenaCollection.py` | Replaced by ManaBox ingest | `ingest/manabox.py` |
 | `scrapeDecks.py` | Deferred — milestone 5, MTGO lists only | — |

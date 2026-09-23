@@ -24,8 +24,14 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 - MTGO ingest paces the monthly index requests as well as event pages (long backfills).
 - `ruff check src tests` is clean: Typer's `Option`/`Argument` defaults are allowed in config, ambiguous
   single-letter names renamed, long test strings split. No behavior change.
+- Resolving a collection loads every printing in one query and looks rows up in memory, instead of one
+  query per ManaBox row (twice per row in the collection summary). `mtg sync` and `mtg own` do less work.
+- Owned counts are computed once per sync instead of once per deck.
+- Clearer code in a few places: the deck-price builder, decklist set codes, and pairs that must line up
+  one-to-one now fail loudly (`zip(strict=True)`) instead of silently truncating.
 
 ### Removed
+- `analysis/mana.py`: stubs that were never implemented. Mana analysis is listed as not started in DESIGN.
 - **Breaking:** sealed precon lists (`precons/`) and the `precons` config key. A precon counts as owned
   only once it's scanned into ManaBox, so nothing is ever counted twice. `mtg init` flags a leftover
   `precons` line; it's otherwise ignored.
