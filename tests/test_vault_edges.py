@@ -5,21 +5,24 @@ import pytest
 from mtg import vault
 
 
-@pytest.mark.parametrize("text, expected", [
-    ("---\ngame: mtg\n---\n", {"game": "mtg"}),
-    ("---\r\ngame: mtg\r\ntags: [a, b]\r\n---\r\n", {"game": "mtg", "tags": ["a", "b"]}),
-    ('---\ngame: "mtg"\n---\n', {"game": "mtg"}),
-    ("---\ntitle: 'a # b'\nx: y # c\n---\n", {"title": "a # b", "x": "y"}),
-    ("---\nsource: https://moxfield.com/decks/abc\n---\n", {"source": "https://moxfield.com/decks/abc"}),
-    ("---\ncommander: Y'shtola, Night's Blessed\n---\n", {"commander": "Y'shtola, Night's Blessed"}),
-    ("---\ntags:\n  - mtg\n  - 'commander'\n---\n", {"tags": ["mtg", "commander"]}),
-    ("---\nempty:\n---\n", {"empty": []}),
-    ("---\ncolors: []\n---\n", {"colors": []}),
-    ("---\n---\n", {}),
-    ("no frontmatter\n", {}),
-    ("---\ngame: mtg\nnever closed\n", {}),
-    ("---\n  indented: ignored\ngame: mtg\n---\n", {"game": "mtg"}),
-])
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("---\ngame: mtg\n---\n", {"game": "mtg"}),
+        ("---\r\ngame: mtg\r\ntags: [a, b]\r\n---\r\n", {"game": "mtg", "tags": ["a", "b"]}),
+        ('---\ngame: "mtg"\n---\n', {"game": "mtg"}),
+        ("---\ntitle: 'a # b'\nx: y # c\n---\n", {"title": "a # b", "x": "y"}),
+        ("---\nsource: https://moxfield.com/decks/abc\n---\n", {"source": "https://moxfield.com/decks/abc"}),
+        ("---\ncommander: Y'shtola, Night's Blessed\n---\n", {"commander": "Y'shtola, Night's Blessed"}),
+        ("---\ntags:\n  - mtg\n  - 'commander'\n---\n", {"tags": ["mtg", "commander"]}),
+        ("---\nempty:\n---\n", {"empty": []}),
+        ("---\ncolors: []\n---\n", {"colors": []}),
+        ("---\n---\n", {}),
+        ("no frontmatter\n", {}),
+        ("---\ngame: mtg\nnever closed\n", {}),
+        ("---\n  indented: ignored\ngame: mtg\n---\n", {"game": "mtg"}),
+    ],
+)
 def test_frontmatter(text, expected):
     assert vault.frontmatter(text) == expected
 
@@ -33,7 +36,9 @@ def test_heading_containing_important_is_not_an_import_heading():
     assert vault.decklist_block(_note(body)).strip() == "Deck\n1 Sol Ring"
 
 
-@pytest.mark.parametrize("heading", ["## Moxfield import", "### Moxfield Import", "# IMPORT", "## Arena import list"])
+@pytest.mark.parametrize(
+    "heading", ["## Moxfield import", "### Moxfield Import", "# IMPORT", "## Arena import list"]
+)
 def test_import_heading_variants(heading):
     body = f"```\nprose, not cards\n```\n\n{heading}\n\n```text\n1 Sol Ring\n```\n"
     assert vault.decklist_block(_note(body)).strip() == "1 Sol Ring"
@@ -101,16 +106,19 @@ def test_skip_dirs_only_apply_to_folders_not_file_names(tmp_path):
     assert names == ["_log.md"]
 
 
-@pytest.mark.parametrize("line, found", [
-    ("- [ ] [[Sol Ring]] #mtg/buy", ["Sol Ring"]),
-    ("- [ ] 🟢 **[[Sol Ring|the ring]]** · ~$1 #mtg/buy", ["Sol Ring"]),
-    ("- [ ] [[Sol Ring#Rulings]] #mtg/buy", ["Sol Ring"]),
-    ("  - [ ] [[Sol Ring]] #mtg/buy", ["Sol Ring"]),
-    ("- [x] [[Sol Ring]] #mtg/buy", []),
-    ("- [ ] [[Sol Ring]] #mtg/buyer", []),
-    ("- [ ] [[Sol Ring]]", []),
-    ("[[Sol Ring]] #mtg/buy", []),
-])
+@pytest.mark.parametrize(
+    "line, found",
+    [
+        ("- [ ] [[Sol Ring]] #mtg/buy", ["Sol Ring"]),
+        ("- [ ] 🟢 **[[Sol Ring|the ring]]** · ~$1 #mtg/buy", ["Sol Ring"]),
+        ("- [ ] [[Sol Ring#Rulings]] #mtg/buy", ["Sol Ring"]),
+        ("  - [ ] [[Sol Ring]] #mtg/buy", ["Sol Ring"]),
+        ("- [x] [[Sol Ring]] #mtg/buy", []),
+        ("- [ ] [[Sol Ring]] #mtg/buyer", []),
+        ("- [ ] [[Sol Ring]]", []),
+        ("[[Sol Ring]] #mtg/buy", []),
+    ],
+)
 def test_buy_line_shapes(tmp_path, line, found):
     (tmp_path / "n.md").write_text(line + "\n")
     assert vault.buy_cards(tmp_path) == found
@@ -119,5 +127,7 @@ def test_buy_line_shapes(tmp_path, line, found):
 def test_buy_cards_skip_machine_zones_and_dedupe(tmp_path):
     for sub in ("mtg/_generated", "mtg/_log", "mtg/commander", "fab"):
         (tmp_path / sub).mkdir(parents=True, exist_ok=True)
-        (tmp_path / sub / "n.md").write_text("- [ ] [[Sol Ring]] #mtg/buy\n- [ ] [[Cyclonic Rift]] #mtg/buy\n")
+        (tmp_path / sub / "n.md").write_text(
+            "- [ ] [[Sol Ring]] #mtg/buy\n- [ ] [[Cyclonic Rift]] #mtg/buy\n"
+        )
     assert sorted(vault.buy_cards(tmp_path)) == ["Cyclonic Rift", "Sol Ring"]

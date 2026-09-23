@@ -27,30 +27,70 @@ CARDS = {
 _CMDR = {"commander": "legal", "duel": "legal"}
 RULES = {
     # oracle_id: (legalities, color_identity, type_line, oracle_text)
-    "o-sol": ({**_CMDR, "modern": "not_legal", "legacy": "banned", "vintage": "restricted"},
-              (), "Artifact", "{T}: Add {C}{C}."),
+    "o-sol": (
+        {**_CMDR, "modern": "not_legal", "legacy": "banned", "vintage": "restricted"},
+        (),
+        "Artifact",
+        "{T}: Add {C}{C}.",
+    ),
     "o-rift": ({**_CMDR, "modern": "not_legal", "legacy": "legal"}, ("U",), "Instant", "Overload {6}{U}"),
     "o-forest": ({**_CMDR, "modern": "legal"}, ("G",), "Basic Land — Forest", "({T}: Add {G}.)"),
     "o-snowf": ({**_CMDR, "modern": "legal"}, ("G",), "Basic Snow Land — Forest", "({T}: Add {G}.)"),
-    "o-aesi": ({**_CMDR, "modern": "legal"}, ("U", "G"), "Legendary Creature — Serpent",
-               "You may play an additional land on each of your turns."),
+    "o-aesi": (
+        {**_CMDR, "modern": "legal"},
+        ("U", "G"),
+        "Legendary Creature — Serpent",
+        "You may play an additional land on each of your turns.",
+    ),
     "o-fire": ({**_CMDR, "modern": "legal"}, ("U", "R"), "Instant // Instant", "Fire\nIce"),
-    "o-bolt": ({**_CMDR, "modern": "legal", "pioneer": "not_legal"}, ("R",), "Instant",
-               "Lightning Bolt deals 3 damage to any target."),
-    "o-rats": ({**_CMDR, "modern": "legal"}, ("B",), "Creature — Rat",
-               "A deck can have any number of cards named Relentless Rats."),
-    "o-crypt": ({"commander": "banned", "duel": "banned", "modern": "not_legal", "vintage": "restricted"},
-                (), "Artifact", "At the beginning of your upkeep, flip a coin."),
-    "o-thrasios": ({**_CMDR, "modern": "legal"}, ("U", "G"), "Legendary Creature — Merfolk Wizard",
-                   "{4}: Scry 1. Partner"),
-    "o-tymna": ({**_CMDR, "modern": "legal"}, ("W", "B"), "Legendary Creature — Human Cleric",
-                "Lifelink. Partner"),
-    "o-dwarves": ({**_CMDR, "modern": "legal"}, ("R",), "Creature — Dwarf",
-                  "A deck can have up to seven cards named Seven Dwarves."),
-    "o-teferi": ({**_CMDR, "modern": "legal"}, ("W", "U"), "Legendary Planeswalker — Teferi",
-                 "+1: Draw a card."),
-    "o-lurrus": ({**_CMDR, "modern": "legal"}, ("W", "B"), "Legendary Creature — Cat Nightmare",
-                 "Companion — Each permanent card in your starting deck has mana value 2 or less."),
+    "o-bolt": (
+        {**_CMDR, "modern": "legal", "pioneer": "not_legal"},
+        ("R",),
+        "Instant",
+        "Lightning Bolt deals 3 damage to any target.",
+    ),
+    "o-rats": (
+        {**_CMDR, "modern": "legal"},
+        ("B",),
+        "Creature — Rat",
+        "A deck can have any number of cards named Relentless Rats.",
+    ),
+    "o-crypt": (
+        {"commander": "banned", "duel": "banned", "modern": "not_legal", "vintage": "restricted"},
+        (),
+        "Artifact",
+        "At the beginning of your upkeep, flip a coin.",
+    ),
+    "o-thrasios": (
+        {**_CMDR, "modern": "legal"},
+        ("U", "G"),
+        "Legendary Creature — Merfolk Wizard",
+        "{4}: Scry 1. Partner",
+    ),
+    "o-tymna": (
+        {**_CMDR, "modern": "legal"},
+        ("W", "B"),
+        "Legendary Creature — Human Cleric",
+        "Lifelink. Partner",
+    ),
+    "o-dwarves": (
+        {**_CMDR, "modern": "legal"},
+        ("R",),
+        "Creature — Dwarf",
+        "A deck can have up to seven cards named Seven Dwarves.",
+    ),
+    "o-teferi": (
+        {**_CMDR, "modern": "legal"},
+        ("W", "U"),
+        "Legendary Planeswalker — Teferi",
+        "+1: Draw a card.",
+    ),
+    "o-lurrus": (
+        {**_CMDR, "modern": "legal"},
+        ("W", "B"),
+        "Legendary Creature — Cat Nightmare",
+        "Companion — Each permanent card in your starting deck has mana value 2 or less.",
+    ),
 }
 PRINTINGS = {
     "s-sol-m3c": Printing("s-sol-m3c", "o-sol", "Sol Ring", "m3c", "283"),
@@ -61,7 +101,7 @@ PRINTINGS = {
 class FakeCatalog:
     def resolve(self, name):
         key = name.strip().lower()
-        for oid, (n, *_ ) in CARDS.items():
+        for oid, (n, *_) in CARDS.items():
             if n.lower() == key or n.lower().split(" // ")[0] == key.split(" // ")[0]:
                 return oid
         return None

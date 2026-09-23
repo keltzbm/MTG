@@ -49,15 +49,17 @@ class MtgoDeck:
     player: str
     main: list[Card] = field(default_factory=list)
     side: list[Card] = field(default_factory=list)
-    rank: int | None = None       # final standing (challenges, showcases)
-    record: str | None = None     # "5-0" for leagues
+    rank: int | None = None  # final standing (challenges, showcases)
+    record: str | None = None  # "5-0" for leagues
 
     @property
     def fingerprint(self) -> str:
         """Same 75 (main and side, any order, any printing split) -> same value.
         Groups identical lists without dropping any: a list that 5-0s twice counts twice."""
+
         def part(cards: list[Card]) -> str:
             return "|".join(sorted(f"{c.name.lower()}:{c.qty}" for c in cards))
+
         return hashlib.sha1(f"{part(self.main)}||{part(self.side)}".encode()).hexdigest()[:12]
 
     def to_text(self) -> str:
@@ -72,25 +74,29 @@ class MtgoDeck:
 class Event:
     slug: str
     event_id: str
-    name: str          # "modern-challenge-32"
-    format: str        # "modern"
-    kind: str          # one of KINDS
-    date: str          # ISO date
+    name: str  # "modern-challenge-32"
+    format: str  # "modern"
+    kind: str  # one of KINDS
+    date: str  # ISO date
     decks: list[MtgoDeck] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Event":
-        decks = [MtgoDeck(
-            player=x["player"],
-            main=[Card(**c) for c in x["main"]],
-            side=[Card(**c) for c in x["side"]],
-            rank=x.get("rank"),
-            record=x.get("record"),
-        ) for x in d["decks"]]
+        decks = [
+            MtgoDeck(
+                player=x["player"],
+                main=[Card(**c) for c in x["main"]],
+                side=[Card(**c) for c in x["side"]],
+                rank=x.get("rank"),
+                record=x.get("record"),
+            )
+            for x in d["decks"]
+        ]
         return cls(**{**d, "decks": decks})
 
 
 # ---- slugs and pages -----------------------------------------------------------
+
 
 def parse_slug(slug: str) -> tuple[str, str, str] | None:
     """(event name, ISO date, event id), or None if it isn't an event slug."""
@@ -128,7 +134,8 @@ def extract_data(page_html: str) -> dict:
 
 
 def _cards(
-    main_rows: Iterable[dict] | None, side_rows: Iterable[dict] | None,
+    main_rows: Iterable[dict] | None,
+    side_rows: Iterable[dict] | None,
 ) -> tuple[list[Card], list[Card]]:
     """MTGO lists a card once per printing; merge by name, keep first-seen order.
     A row flagged "sideboard": "true" goes to the sideboard whichever list it's in."""
@@ -141,15 +148,14 @@ def _cards(
                 continue
             board = boards["side" if str(r.get("sideboard", "")).lower() == "true" else default]
             board[name] = board.get(name, 0) + int(r.get("qty") or r.get("quantity") or 0)
-    return ([Card(n, q) for n, q in boards["main"].items()],
-            [Card(n, q) for n, q in boards["side"].items()])
+    return ([Card(n, q) for n, q in boards["main"].items()], [Card(n, q) for n, q in boards["side"].items()])
 
 
 def _record(d: dict, kind: str) -> str | None:
     w = d.get("wins")
     if isinstance(w, dict) and w.get("wins") is not None:
         return f"{w['wins']}-{w.get('losses', 0)}"
-    return "5-0" if kind == "league" else None   # MTGO only publishes 5-0 league lists
+    return "5-0" if kind == "league" else None  # MTGO only publishes 5-0 league lists
 
 
 def parse_event(slug: str, data: dict) -> Event:
@@ -179,6 +185,7 @@ def parse_event(slug: str, data: dict) -> Event:
 
 
 # ---- storage -------------------------------------------------------------------
+
 
 def store_dir() -> Path:
     return data_dir() / "mtgo"
@@ -217,6 +224,7 @@ def load(
 
 # ---- fetching ------------------------------------------------------------------
 
+
 def _get(url: str, retries: int = 2, timeout: float = 20) -> str:
     """GET with a short retry — mtgo.com occasionally stalls instead of answering."""
     req = urllib.request.Request(url, headers=HEADERS)
@@ -246,8 +254,8 @@ def _months(start: date, end: date) -> list[tuple[int, int]]:
 @dataclass
 class IngestResult:
     fetched: list[Event] = field(default_factory=list)
-    skipped: int = 0                                     # already stored
-    pending: list[str] = field(default_factory=list)     # page up, lists not published yet
+    skipped: int = 0  # already stored
+    pending: list[str] = field(default_factory=list)  # page up, lists not published yet
     failed: list[tuple[str, str]] = field(default_factory=list)
 
 
@@ -282,7 +290,7 @@ def ingest(
     for i, (y, m) in enumerate(_months(since, until)):
         url = f"{BASE}/decklists/{y}/{m:02d}"
         if i:
-            time.sleep(delay)   # long backfills hit the index once per month — pace those too
+            time.sleep(delay)  # long backfills hit the index once per month — pace those too
         try:
             index = get(url)
         except Exception as e:  # report and move on to the next month
@@ -306,7 +314,7 @@ def ingest(
             try:
                 event = parse_event(slug, extract_data(page))
             except ValueError:
-                res.pending.append(slug)   # page is up but the data isn't yet
+                res.pending.append(slug)  # page is up but the data isn't yet
                 continue
             if not event.decks:
                 res.pending.append(slug)

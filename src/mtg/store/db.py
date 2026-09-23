@@ -79,7 +79,7 @@ class DuckCatalog:
                 GROUP BY oracle_id
             """).fetchall()
         except Exception:
-            return {}   # card data loaded before rarity was stored — re-run ingest
+            return {}  # card data loaded before rarity was stored — re-run ingest
         return dict(rows)
 
     @cached_property
@@ -87,8 +87,10 @@ class DuckCatalog:
         """Legalities merged across every printing (see merge_legalities). For the
         rest, the newest printing wins, but never a Secret Lair reversible (its
         type line and faces are doubled)."""
-        key = ("coalesce(date_diff('day', DATE '1990-01-01', released_at), 0)"
-               " + CASE WHEN layout = 'reversible_card' THEN 0 ELSE 1000000 END")
+        key = (
+            "coalesce(date_diff('day', DATE '1990-01-01', released_at), 0)"
+            " + CASE WHEN layout = 'reversible_card' THEN 0 ELSE 1000000 END"
+        )
         try:
             legal_rows = self.con.execute("""
                 SELECT DISTINCT oracle_id, CAST(to_json(legalities) AS VARCHAR)
@@ -103,7 +105,7 @@ class DuckCatalog:
                 GROUP BY oracle_id
             """).fetchall()
         except duckdb.Error:
-            return {}   # card data loaded before oracle_text was stored — re-run ingest
+            return {}  # card data loaded before oracle_text was stored — re-run ingest
         by_card: dict[str, list[dict]] = {}
         for oid, legal in legal_rows:
             by_card.setdefault(oid, []).append(_json(legal) or {})
@@ -155,7 +157,8 @@ class DuckCatalog:
     def _printing(self, where: str, args: list) -> Printing | None:
         row = self.con.execute(
             f"SELECT scryfall_id, oracle_id, name, set_code, collector_number, frame, border_color "
-            f"FROM printings WHERE {where} LIMIT 1", args
+            f"FROM printings WHERE {where} LIMIT 1",
+            args,
         ).fetchone()
         return Printing(*row) if row else None
 

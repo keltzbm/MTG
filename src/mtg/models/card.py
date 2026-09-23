@@ -22,10 +22,10 @@ class Printing:
 class CardRules:
     """Oracle-level facts the rules care about. Same for every printing."""
 
-    legalities: dict[str, str]           # scryfall format key -> legal | not_legal | banned | restricted
+    legalities: dict[str, str]  # scryfall format key -> legal | not_legal | banned | restricted
     color_identity: tuple[str, ...] = ()
     type_line: str = ""
-    oracle_text: str = ""                # all faces, newline-joined
+    oracle_text: str = ""  # all faces, newline-joined
 
 
 _RANK = {"banned": 3, "restricted": 2, "legal": 1, "not_legal": 0}
@@ -48,5 +48,5 @@ def merge_legalities(per_printing: list[dict[str, str]]) -> dict[str, str]:
 class Prices:
     """Cheapest across all printings of one card."""
 
-    usd: float | None = None   # paper, nonfoil
-    tix: float | None = None   # MTGO, via Scryfall (Cardhoarder)
+    usd: float | None = None  # paper, nonfoil
+    tix: float | None = None  # MTGO, via Scryfall (Cardhoarder)

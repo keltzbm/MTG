@@ -23,11 +23,11 @@ STALE = "card data predates legality support — run: mtg ingest scryfall --forc
 
 @dataclass(frozen=True)
 class FormatRules:
-    size: int                     # minimum, or exact when `exact`
+    size: int  # minimum, or exact when `exact`
     exact: bool = False
     copies: int = 4
-    sideboard: int = 15           # max; 0 = no sideboard
-    commander: bool = False       # command zone + color identity
+    sideboard: int = 15  # max; 0 = no sideboard
+    commander: bool = False  # command zone + color identity
 
 
 _CONSTRUCTED = FormatRules(60)
@@ -35,10 +35,25 @@ _COMMANDER = FormatRules(100, exact=True, copies=1, sideboard=0, commander=True)
 
 # Keys match Scryfall's `legalities` keys.
 FORMAT_RULES: dict[str, FormatRules] = {
-    **{f: _CONSTRUCTED for f in (
-        "standard", "future", "pioneer", "explorer", "modern", "legacy", "vintage", "pauper",
-        "premodern", "oldschool", "historic", "timeless", "alchemy", "penny",
-    )},
+    **{
+        f: _CONSTRUCTED
+        for f in (
+            "standard",
+            "future",
+            "pioneer",
+            "explorer",
+            "modern",
+            "legacy",
+            "vintage",
+            "pauper",
+            "premodern",
+            "oldschool",
+            "historic",
+            "timeless",
+            "alchemy",
+            "penny",
+        )
+    },
     "commander": _COMMANDER,
     "duel": _COMMANDER,
     "paupercommander": _COMMANDER,
@@ -50,9 +65,13 @@ FORMAT_RULES: dict[str, FormatRules] = {
 }
 
 ALIASES = {
-    "edh": "commander", "cedh": "commander",
-    "duelcommander": "duel", "pdh": "paupercommander", "pauperedh": "paupercommander",
-    "historicbrawl": "brawl", "pennydreadful": "penny",
+    "edh": "commander",
+    "cedh": "commander",
+    "duelcommander": "duel",
+    "pdh": "paupercommander",
+    "pauperedh": "paupercommander",
+    "historicbrawl": "brawl",
+    "pennydreadful": "penny",
 }
 
 _WORDS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
@@ -67,6 +86,7 @@ def normalize_format(fmt: str) -> str:
 
 
 # ---- single cards --------------------------------------------------------------
+
 
 def status(oracle_id: str, fmt: str, catalog: Catalog) -> str:
     """legal | not_legal | banned | restricted | unknown"""
@@ -110,9 +130,10 @@ def target_copies(oracle_id: str, catalog: Catalog) -> int:
 
 # ---- whole decks ---------------------------------------------------------------
 
+
 @dataclass
 class Issue:
-    severity: str              # error | warning
+    severity: str  # error | warning
     message: str
     card: str | None = None
 

@@ -41,6 +41,7 @@ def _domain() -> str:
 
 # ---- times ---------------------------------------------------------------------
 
+
 def parse_time(text: str) -> tuple[int, int]:
     """'07:00' or '7:00' -> (7, 0). 24-hour only; '7pm' and '25:00' are errors."""
     m = _TIME.match(text.strip())
@@ -73,6 +74,7 @@ def next_run(times: list[tuple[int, int]], now: datetime) -> datetime | None:
 
 
 # ---- the plist -----------------------------------------------------------------
+
 
 def build(times: list[tuple[int, int]], exe: Path, log: Path) -> dict:
     """launchd needs absolute paths: no ~, no PATH lookup."""
@@ -107,6 +109,7 @@ def parse_print(text: str) -> dict[str, str]:
 
 
 # ---- actions -------------------------------------------------------------------
+
 
 @dataclass
 class Status:
@@ -147,7 +150,7 @@ def install(
     log.parent.mkdir(parents=True, exist_ok=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(plistlib.dumps(build(times, exe, log)))
-    run(["launchctl", "bootout", f"{_domain()}/{LABEL}"])   # fails harmlessly if not loaded
+    run(["launchctl", "bootout", f"{_domain()}/{LABEL}"])  # fails harmlessly if not loaded
     result = run(["launchctl", "bootstrap", _domain(), str(path)])
     if result.returncode != 0:
         raise RuntimeError(f"wrote {path} but launchctl bootstrap failed: {result.stderr.strip()}")

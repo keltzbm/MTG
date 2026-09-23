@@ -2,7 +2,9 @@ from mtg.ingest.decklist import parse_text
 
 
 def test_sections_quantities_and_pinned_printings():
-    d = parse_text("Commander\n1 Aesi, Tyrant of Gyre Strait\n\nDeck\n1x Sol Ring (M3C) 283 *F*\n2 Snow-Covered Forest\n// note\n")
+    d = parse_text(
+        "Commander\n1 Aesi, Tyrant of Gyre Strait\n\nDeck\n1x Sol Ring (M3C) 283 *F*\n2 Snow-Covered Forest\n// note\n"
+    )
     assert [(e.board, e.quantity, e.name) for e in d.entries] == [
         ("commander", 1, "Aesi, Tyrant of Gyre Strait"),
         ("main", 1, "Sol Ring"),

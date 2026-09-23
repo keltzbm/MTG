@@ -26,9 +26,11 @@ def load(path: Path) -> list[Holding]:
             name = next((cols[c] for c in NAME_COLS if c in cols), None)
             count = next((cols[c] for c in COUNT_COLS if c in cols), None)
             if name and count:
-                return [Holding(r[name].strip(), int(r[count]), source="arena")
-                        for r in rows
-                        if r[name].strip() and (r[count] or "").strip().isdigit() and int(r[count]) > 0]
+                return [
+                    Holding(r[name].strip(), int(r[count]), source="arena")
+                    for r in rows
+                    if r[name].strip() and (r[count] or "").strip().isdigit() and int(r[count]) > 0
+                ]
         raise ValueError(f"{path.name}: expected columns like Name and Count")
     deck = parse_text(text)
     return [Holding(e.name, e.quantity, source="arena") for e in deck.entries]

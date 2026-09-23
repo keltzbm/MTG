@@ -7,6 +7,10 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 ## [Unreleased] — toward 0.3.0
 
 ### Added
+- `mtg ingest tcgcsv`: daily TCGplayer price archives from tcgcsv.com, every game in one file per day,
+  stored as downloaded under `~/.local/share/mtg/tcgcsv/archive/`. `--since 2024-02-08` backfills the whole
+  archive; already-stored days are skipped, unpublished days are retried next run. `mtg sync` fetches the
+  last few days, so the scheduled job keeps the archive current.
 - `mtg schedule` is now a command group: `mtg schedule` / `show` (times, next run, loaded, runs,
   last exit, log), `set 07:00 19:30` (several daily 24-hour times, validated), `remove`.
 - `CHANGELOG.md`.

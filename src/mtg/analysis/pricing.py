@@ -46,7 +46,9 @@ class DeckPrice:
 
 
 def price(rows: list[Row], catalog: Catalog) -> DeckPrice:
-    return DeckPrice([
-        Line(r.name, r.needed, r.shortfall, *(lambda p: (p.usd, p.tix))(catalog.prices(r.oracle_id)))
-        for r in rows
-    ])
+    return DeckPrice(
+        [
+            Line(r.name, r.needed, r.shortfall, *(lambda p: (p.usd, p.tix))(catalog.prices(r.oracle_id)))
+            for r in rows
+        ]
+    )

@@ -1,7 +1,5 @@
-import json
 
 from mtg import sync
-from mtg.export import obsidian
 
 NOTE = """---
 game: mtg

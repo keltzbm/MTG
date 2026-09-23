@@ -25,7 +25,7 @@ def test_manabox_export_shape(tmp_path):
         ("Sol Ring", 2, "M3C", "283", False),
         ("Sol Ring", 1, "CMR", "472", True),
         ("Cyclonic Rift", 1, "2X2", "45", True),
-        ("Forest", 1, "M3C", "300", False),      # blank quantity reads as 1
+        ("Forest", 1, "M3C", "300", False),  # blank quantity reads as 1
     ]
     assert hs[0].scryfall_id == "s-sol-m3c" and hs[1].scryfall_id is None
     assert all(h.source == "manabox" for h in hs)
@@ -47,18 +47,23 @@ def test_unresolved_holdings_are_reported_and_not_counted(cat):
 
 
 def test_bad_scryfall_id_falls_back_to_set_number_then_name(cat):
-    hs = [Holding("x", 1, scryfall_id="nope", set_code="2X2", collector_number="45"),
-          Holding("Sol Ring", 1, scryfall_id="nope", set_code="XXX", collector_number="1")]
+    hs = [
+        Holding("x", 1, scryfall_id="nope", set_code="2X2", collector_number="45"),
+        Holding("Sol Ring", 1, scryfall_id="nope", set_code="XXX", collector_number="1"),
+    ]
     assert resolve_holdings(hs, cat) == []
     assert [h.oracle_id for h in hs] == ["o-rift", "o-sol"]
 
 
-@pytest.mark.parametrize("header, row", [
-    ("Name,Count", "Sol Ring,4"),
-    ("name,quantity", "Sol Ring,4"),
-    ("Card Name,Qty", "Sol Ring,4"),
-    (" Card , Owned ", "Sol Ring,4"),
-])
+@pytest.mark.parametrize(
+    "header, row",
+    [
+        ("Name,Count", "Sol Ring,4"),
+        ("name,quantity", "Sol Ring,4"),
+        ("Card Name,Qty", "Sol Ring,4"),
+        (" Card , Owned ", "Sol Ring,4"),
+    ],
+)
 def test_arena_csv_column_names(tmp_path, header, row):
     p = tmp_path / "a.csv"
     p.write_text(f"{header}\n{row}\n")
@@ -79,10 +84,14 @@ def test_arena_csv_without_usable_columns_is_an_error(tmp_path):
 
 
 def test_precon_lists_and_missing_precons(tmp_path):
-    (tmp_path / "M3C-tricky-terrain.txt").write_text("Commander\n1 Omo, Queen of Vesuva\n\nDeck\n1 Sol Ring\n")
+    (tmp_path / "M3C-tricky-terrain.txt").write_text(
+        "Commander\n1 Omo, Queen of Vesuva\n\nDeck\n1 Sol Ring\n"
+    )
     hs = precon.load("M3C-tricky-terrain", tmp_path)
     assert [(h.name, h.source) for h in hs] == [
-        ("Omo, Queen of Vesuva", "precon:M3C-tricky-terrain"), ("Sol Ring", "precon:M3C-tricky-terrain")]
+        ("Omo, Queen of Vesuva", "precon:M3C-tricky-terrain"),
+        ("Sol Ring", "precon:M3C-tricky-terrain"),
+    ]
     assert precon.available(tmp_path) == ["M3C-tricky-terrain"]
     with pytest.raises(FileNotFoundError):
         precon.load("nope", tmp_path)

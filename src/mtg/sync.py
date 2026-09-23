@@ -80,7 +80,9 @@ def run(mtg_dir: Path, inv: Inventory, catalog: Catalog, today: str | None = Non
             res.versions.append(deck.slug)
         if rep.unresolved:
             res.warnings.append(f"{deck.slug}: unmatched {', '.join(rep.unresolved)}")
-    res.changed_notes += obsidian.write_summary(gen, obsidian.collection_summary(inv.holdings, catalog, today))
+    res.changed_notes += obsidian.write_summary(
+        gen, obsidian.collection_summary(inv.holdings, catalog, today)
+    )
     res.removed = obsidian.prune(gen, keep)
     buys = []
     for name in vault.buy_cards(mtg_dir.parent):

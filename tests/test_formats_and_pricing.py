@@ -7,7 +7,9 @@ from mtg.export import formats
 from mtg.ingest.decklist import parse_text
 from mtg.models import Holding
 
-LIST = "Commander\n1 Aesi, Tyrant of Gyre Strait\n\nDeck\n1 Sol Ring\n1 Cyclonic Rift\n1 Fire // Ice\n2 Forest\n"
+LIST = (
+    "Commander\n1 Aesi, Tyrant of Gyre Strait\n\nDeck\n1 Sol Ring\n1 Cyclonic Rift\n1 Fire // Ice\n2 Forest\n"
+)
 
 
 def _deck(cat):

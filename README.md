@@ -57,6 +57,19 @@ fetches new ones.
 
 A deck is named by its note's slug, or by a path to any `.md` or `.txt` list.
 
+## Price history (every game)
+
+```bash
+mtg ingest tcgcsv                           # last 7 days of TCGplayer price archives from tcgcsv.com
+mtg ingest tcgcsv --since 2024-02-08        # full backfill; the archive starts on that day
+```
+
+One compressed file per day holds TCGplayer prices for every game (Magic,
+Flesh and Blood, One Piece, ...). Files are stored as downloaded under
+`~/.local/share/mtg/tcgcsv/archive/`; loading them into a database comes later.
+`mtg sync` fetches the last few days on its own, so the scheduled job keeps the
+archive current.
+
 ## Keeping the vault current
 
 Every ingest resyncs the vault afterwards (`--no-sync` to skip). Beyond that:
@@ -73,7 +86,7 @@ mtg schedule remove
 | What | Where |
 |---|---|
 | Config | `~/.config/mtg/config.toml` — vault path, sealed precons you own |
-| Card data, collection, sync state, MTGO events | `~/.local/share/mtg/` — outside the synced vault |
+| Card data, collection, sync state, MTGO events, price archive | `~/.local/share/mtg/` — outside the synced vault |
 | Precon lists | `precons/` in this repo |
 | Output | `tcg/mtg/_generated/` and `tcg/mtg/_log/` in the vault — nothing else |
 

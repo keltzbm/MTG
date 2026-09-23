@@ -24,16 +24,21 @@ LINE = re.compile(
 )
 
 HEADERS = {
-    "commander": "commander", "commanders": "commander",
-    "deck": "main", "main": "main", "mainboard": "main", "maindeck": "main",
-    "sideboard": "sideboard", "companion": "companion",
+    "commander": "commander",
+    "commanders": "commander",
+    "deck": "main",
+    "main": "main",
+    "mainboard": "main",
+    "maindeck": "main",
+    "sideboard": "sideboard",
+    "companion": "companion",
 }
 SKIPPED = {"maybeboard", "maybe", "considering", "tokens", "attractions", "stickers"}
 
 
 def parse_text(text: str, slug: str = "deck") -> Deck:
     deck = Deck(slug=slug)
-    text = text.lstrip("\ufeff")    # byte-order mark from Windows-made files
+    text = text.lstrip("\ufeff")  # byte-order mark from Windows-made files
     board: str | None = "main"
     saw_header = False
     saw_main = False
@@ -41,24 +46,26 @@ def parse_text(text: str, slug: str = "deck") -> Deck:
         line = raw.strip()
         if not line:
             if saw_main and not saw_header:
-                board = "sideboard"   # MTGO .txt convention
+                board = "sideboard"  # MTGO .txt convention
             continue
         if line.startswith(("#", "//")):
             continue
         key = line.rstrip(":").lower()
         if key in HEADERS or key in SKIPPED:
-            board, saw_header = HEADERS.get(key), True   # None = skip this section
+            board, saw_header = HEADERS.get(key), True  # None = skip this section
             continue
         m = LINE.match(line)
         if not m or board is None or int(m["qty"]) == 0:
             continue
-        deck.entries.append(DeckEntry(
-            name=m["name"].strip(),
-            quantity=int(m["qty"]),
-            board=board,
-            set_code=(m["set"] or None) and m["set"].upper(),
-            collector_number=m["num"],
-        ))
+        deck.entries.append(
+            DeckEntry(
+                name=m["name"].strip(),
+                quantity=int(m["qty"]),
+                board=board,
+                set_code=(m["set"] or None) and m["set"].upper(),
+                collector_number=m["num"],
+            )
+        )
         saw_main = saw_main or board == "main"
     return deck
 

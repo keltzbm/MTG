@@ -18,8 +18,10 @@ def test_precon_holdings_count_as_owned(cat):
 
 
 def test_name_is_not_a_key_holdings_resolve_by_printing_first(cat):
-    hs = [Holding("Sol Ring (Retro)", 1, scryfall_id="s-sol-m3c"),
-          Holding("whatever", 1, set_code="2X2", collector_number="45")]
+    hs = [
+        Holding("Sol Ring (Retro)", 1, scryfall_id="s-sol-m3c"),
+        Holding("whatever", 1, set_code="2X2", collector_number="45"),
+    ]
     assert resolve_holdings(hs, cat) == []
     assert counts(hs) == Counter({"o-sol": 1, "o-rift": 1})
 

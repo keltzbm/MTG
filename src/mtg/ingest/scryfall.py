@@ -12,7 +12,7 @@ it's still read if present so an older cached file keeps working.
 import json
 import shutil
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb
@@ -74,7 +74,7 @@ def is_stale(max_age_hours: float = 24) -> bool:
         return True
     saved = json.loads(meta_path().read_text())
     loaded = datetime.fromisoformat(saved["loaded_at"])
-    return (datetime.now(timezone.utc) - loaded).total_seconds() > max_age_hours * 3600
+    return (datetime.now(UTC) - loaded).total_seconds() > max_age_hours * 3600
 
 
 def download_url(info: dict) -> tuple[str, str]:
@@ -170,9 +170,13 @@ def refresh(force: bool = False, max_age_hours: float = 24) -> str:
         return "card data is current"
     path, info = download()
     rows = load(path)
-    meta_path().write_text(json.dumps({
-        "updated_at": info.get("updated_at"),
-        "loaded_at": datetime.now(timezone.utc).isoformat(),
-        "rows": rows,
-    }))
+    meta_path().write_text(
+        json.dumps(
+            {
+                "updated_at": info.get("updated_at"),
+                "loaded_at": datetime.now(UTC).isoformat(),
+                "rows": rows,
+            }
+        )
+    )
     return f"loaded {rows:,} printings (Scryfall {info.get('updated_at', '?')})"

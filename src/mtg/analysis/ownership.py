@@ -18,8 +18,8 @@ RARITIES = ("mythic", "rare", "uncommon", "common")
 class Row:
     oracle_id: str
     name: str
-    needed: int     # copies the deck plays
-    owned: int      # copies you have, anywhere
+    needed: int  # copies the deck plays
+    owned: int  # copies you have, anywhere
 
     @property
     def status(self) -> str:

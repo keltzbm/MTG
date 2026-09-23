@@ -9,35 +9,48 @@ def _rows(text):
     return [(e.board, e.quantity, e.name) for e in parse_text(text).entries]
 
 
-@pytest.mark.parametrize("line, qty, name, set_code, num", [
-    ("1 Sol Ring", 1, "Sol Ring", None, None),
-    ("1x Sol Ring", 1, "Sol Ring", None, None),
-    ("12 Forest", 12, "Forest", None, None),
-    ("  4   Lightning Bolt  ", 4, "Lightning Bolt", None, None),
-    ("1\tSol Ring", 1, "Sol Ring", None, None),
-    ("1 Sol Ring (M3C) 283", 1, "Sol Ring", "M3C", "283"),
-    ("1 Sol Ring (m3c) 283", 1, "Sol Ring", "M3C", "283"),
-    ("1 Sol Ring (M3C) 283 *F*", 1, "Sol Ring", "M3C", "283"),
-    ("1 Sol Ring (M3C) 283 *E*", 1, "Sol Ring", "M3C", "283"),
-    ("1 Sol Ring (PLST) C21-263", 1, "Sol Ring", "PLST", "C21-263"),
-    ("1 Sol Ring (SLD) 1512★", 1, "Sol Ring", "SLD", "1512★"),
-    ("1 Sol Ring (M3C)", 1, "Sol Ring", "M3C", None),
-    ("1 Fire // Ice", 1, "Fire // Ice", None, None),
-    ("1 Yavimaya, Cradle of Growth", 1, "Yavimaya, Cradle of Growth", None, None),
-    ("1 Y'shtola, Night's Blessed", 1, "Y'shtola, Night's Blessed", None, None),
-    ("1 B.F.M. (Big Furry Monster)", 1, "B.F.M. (Big Furry Monster)", None, None),
-    ("1 Borrowing 100,000 Arrows", 1, "Borrowing 100,000 Arrows", None, None),
-])
+@pytest.mark.parametrize(
+    "line, qty, name, set_code, num",
+    [
+        ("1 Sol Ring", 1, "Sol Ring", None, None),
+        ("1x Sol Ring", 1, "Sol Ring", None, None),
+        ("12 Forest", 12, "Forest", None, None),
+        ("  4   Lightning Bolt  ", 4, "Lightning Bolt", None, None),
+        ("1\tSol Ring", 1, "Sol Ring", None, None),
+        ("1 Sol Ring (M3C) 283", 1, "Sol Ring", "M3C", "283"),
+        ("1 Sol Ring (m3c) 283", 1, "Sol Ring", "M3C", "283"),
+        ("1 Sol Ring (M3C) 283 *F*", 1, "Sol Ring", "M3C", "283"),
+        ("1 Sol Ring (M3C) 283 *E*", 1, "Sol Ring", "M3C", "283"),
+        ("1 Sol Ring (PLST) C21-263", 1, "Sol Ring", "PLST", "C21-263"),
+        ("1 Sol Ring (SLD) 1512★", 1, "Sol Ring", "SLD", "1512★"),
+        ("1 Sol Ring (M3C)", 1, "Sol Ring", "M3C", None),
+        ("1 Fire // Ice", 1, "Fire // Ice", None, None),
+        ("1 Yavimaya, Cradle of Growth", 1, "Yavimaya, Cradle of Growth", None, None),
+        ("1 Y'shtola, Night's Blessed", 1, "Y'shtola, Night's Blessed", None, None),
+        ("1 B.F.M. (Big Furry Monster)", 1, "B.F.M. (Big Furry Monster)", None, None),
+        ("1 Borrowing 100,000 Arrows", 1, "Borrowing 100,000 Arrows", None, None),
+    ],
+)
 def test_line_shapes(line, qty, name, set_code, num):
     (e,) = parse_text(line).entries
     assert (e.quantity, e.name, e.set_code, e.collector_number) == (qty, name, set_code, num)
 
 
-@pytest.mark.parametrize("header, board", [
-    ("Commander", "commander"), ("COMMANDER", "commander"), ("Commanders:", "commander"),
-    ("Deck", "main"), ("Mainboard", "main"), ("Main", "main"), ("Maindeck:", "main"),
-    ("Sideboard", "sideboard"), ("SIDEBOARD:", "sideboard"), ("Companion", "companion"),
-])
+@pytest.mark.parametrize(
+    "header, board",
+    [
+        ("Commander", "commander"),
+        ("COMMANDER", "commander"),
+        ("Commanders:", "commander"),
+        ("Deck", "main"),
+        ("Mainboard", "main"),
+        ("Main", "main"),
+        ("Maindeck:", "main"),
+        ("Sideboard", "sideboard"),
+        ("SIDEBOARD:", "sideboard"),
+        ("Companion", "companion"),
+    ],
+)
 def test_headers(header, board):
     assert _rows(f"{header}\n1 Sol Ring\n") == [(board, 1, "Sol Ring")]
 
@@ -58,7 +71,9 @@ def test_load_reads_windows_files(tmp_path):
     d = load(p)
     assert d.slug == "list"
     assert [(e.board, e.quantity, e.name) for e in d.entries] == [
-        ("main", 4, "Lightning Bolt"), ("sideboard", 2, "Duress")]
+        ("main", 4, "Lightning Bolt"),
+        ("sideboard", 2, "Duress"),
+    ]
 
 
 def test_zero_quantity_lines_are_ignored():

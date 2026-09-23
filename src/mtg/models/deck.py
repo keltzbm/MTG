@@ -5,10 +5,10 @@ BOARDS = ("commander", "main", "sideboard", "companion")
 
 @dataclass
 class DeckEntry:
-    name: str                     # as written; display only
+    name: str  # as written; display only
     quantity: int
-    board: str = "main"           # commander | main | sideboard | companion
-    set_code: str | None = None   # a pinned printing, if the list had one
+    board: str = "main"  # commander | main | sideboard | companion
+    set_code: str | None = None  # a pinned printing, if the list had one
     collector_number: str | None = None
     oracle_id: str | None = None  # filled by resolve()
 
@@ -17,7 +17,7 @@ class DeckEntry:
 class Deck:
     slug: str
     entries: list[DeckEntry] = field(default_factory=list)
-    meta: dict = field(default_factory=dict)   # note frontmatter
+    meta: dict = field(default_factory=dict)  # note frontmatter
 
     @property
     def format(self) -> str:

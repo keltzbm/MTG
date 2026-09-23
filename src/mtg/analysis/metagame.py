@@ -8,10 +8,10 @@ from mtg.ingest.mtgo import Event, MtgoDeck
 @dataclass
 class CardStat:
     name: str
-    decks: int = 0          # decks playing it anywhere
+    decks: int = 0  # decks playing it anywhere
     main_decks: int = 0
     side_decks: int = 0
-    copies: int = 0         # total, main + side
+    copies: int = 0  # total, main + side
 
     def share(self, total_decks: int) -> float:
         return self.decks / total_decks if total_decks else 0.0
@@ -49,7 +49,9 @@ def card_stats(events: list[Event], board: str = "all") -> list[CardStat]:
 
 
 def find_decks(
-    events: list[Event], card: str | None = None, player: str | None = None,
+    events: list[Event],
+    card: str | None = None,
+    player: str | None = None,
 ) -> list[tuple[Event, MtgoDeck]]:
     """Decks containing `card` (main or side) and/or piloted by `player`, case-insensitive."""
     card_lc = card.lower() if card else None

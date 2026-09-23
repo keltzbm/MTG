@@ -28,14 +28,16 @@ def load(path: Path) -> list[Holding]:
             if not name:
                 continue
             qty = int(_get(row, "Quantity", "quantity", "Count") or 1)
-            out.append(Holding(
-                name=name,
-                quantity=qty,
-                scryfall_id=_get(row, "Scryfall ID", "scryfall_id") or None,
-                set_code=(_get(row, "Set code", "Set Code", "set_code").upper() or None),
-                collector_number=_get(row, "Collector number", "Collector Number") or None,
-                foil=_get(row, "Foil", "foil").lower() in {"foil", "etched", "true", "yes"},
-            ))
+            out.append(
+                Holding(
+                    name=name,
+                    quantity=qty,
+                    scryfall_id=_get(row, "Scryfall ID", "scryfall_id") or None,
+                    set_code=(_get(row, "Set code", "Set Code", "set_code").upper() or None),
+                    collector_number=_get(row, "Collector number", "Collector Number") or None,
+                    foil=_get(row, "Foil", "foil").lower() in {"foil", "etched", "true", "yes"},
+                )
+            )
     return out
 
 

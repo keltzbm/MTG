@@ -6,7 +6,8 @@ from typing import Annotated
 
 import typer
 
-from mtg import config, sync as syncmod, vault
+from mtg import config, vault
+from mtg import sync as syncmod
 from mtg.export import formats
 
 app = typer.Typer(help="Collection, decks, prices, and the Obsidian vault.", no_args_is_help=True)
@@ -20,6 +21,7 @@ DeckRef = Annotated[str, typer.Argument(help="Deck note slug (aesi-lands) or a p
 
 def _catalog():
     from mtg.store.db import DuckCatalog, connect
+
     return DuckCatalog(connect())
 
 
@@ -48,6 +50,7 @@ def ingest_scryfall(
 ) -> None:
     """Download Scryfall's bulk card data and load it."""
     from mtg.ingest import scryfall
+
     typer.echo(scryfall.refresh(force=force))
     if not no_sync:
         _run_sync(offline=True)
@@ -67,6 +70,7 @@ def ingest_manabox(
 ) -> None:
     """Copy a ManaBox collection export into the data folder."""
     from mtg.ingest import manabox
+
     src = csv_path or manabox.newest_export(config.load().downloads)
     if src is None:
         raise typer.BadParameter("no ManaBox*.csv in ~/Downloads — pass a path")
@@ -79,6 +83,7 @@ def ingest_manabox(
 def ingest_arena(path: Path) -> None:
     """Load an Arena collection export (text list or CSV with name + count)."""
     from mtg.ingest import arena
+
     holdings = arena.load(path.expanduser())
     dest = config.load().arena_list
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -87,12 +92,16 @@ def ingest_arena(path: Path) -> None:
 
 
 KindOpt = typer.Option(
-    None, "--kind", "-k", help="league | challenge | showcase | qualifier | preliminary; repeatable",
+    None,
+    "--kind",
+    "-k",
+    help="league | challenge | showcase | qualifier | preliminary; repeatable",
 )
 
 
 def _kinds(kind: list[str] | None) -> list[str] | None:
     from mtg.ingest import mtgo
+
     bad = [k for k in kind or [] if k not in mtgo.KINDS]
     if bad:
         raise typer.BadParameter(f"--kind must be one of {', '.join(mtgo.KINDS)}")
@@ -100,7 +109,10 @@ def _kinds(kind: list[str] | None) -> list[str] | None:
 
 
 FormatsOpt = typer.Option(
-    ["modern"], "--format", "-f", help="modern, pioneer, pauper, ... or all; repeatable",
+    ["modern"],
+    "--format",
+    "-f",
+    help="modern, pioneer, pauper, ... or all; repeatable",
 )
 
 
@@ -121,6 +133,7 @@ def ingest_mtgo(
     from datetime import date, timedelta
 
     from mtg.ingest import mtgo
+
     since = date.today() - timedelta(days=days)
     res = mtgo.ingest(_formats(fmt), since, kinds=_kinds(kind), delay=delay, progress=typer.echo)
     typer.echo(f"{len(res.fetched)} new events · {res.skipped} already stored · {mtgo.store_dir()}")
@@ -130,15 +143,52 @@ def ingest_mtgo(
         typer.echo(f"  ! {slug}: {err}", err=True)
 
 
+@ingest_app.command("tcgcsv")
+def ingest_tcgcsv(
+    days: int = typer.Option(7, help="How far back to look"),
+    since: str = typer.Option(None, help="Start date YYYY-MM-DD, overrides --days; the first is 2024-02-08"),
+    delay: float = typer.Option(0.25, help="Seconds between downloads"),
+) -> None:
+    """Download tcgcsv's daily TCGplayer price archives (every game) that aren't stored yet."""
+    from datetime import date, timedelta
+
+    from mtg.ingest import tcgcsv
+
+    try:
+        start = date.fromisoformat(since) if since else date.today() - timedelta(days=days)
+    except ValueError as e:
+        raise typer.BadParameter("--since must be YYYY-MM-DD") from e
+    res = tcgcsv.ingest(start, delay=delay, progress=typer.echo)
+    typer.echo(_archive_summary(res))
+    for day, err in res.failed:
+        typer.echo(f"  ! {day}: {err}", err=True)
+
+
+def _archive_summary(res) -> str:
+    from mtg.ingest import tcgcsv
+
+    days = tcgcsv.stored_days()
+    span = f"{days[0]} → {days[-1]}" if days else "none yet"
+    line = (
+        f"{len(res.fetched)} new days · {res.skipped} already stored · "
+        f"{len(days)} stored ({span}, {tcgcsv.stored_bytes() / 1e9:.2f} GB) · {tcgcsv.store_dir()}"
+    )
+    if res.pending:
+        line += f"\nnot published yet — retried next run: {', '.join(str(d) for d in res.pending)}"
+    return line
+
+
 def _events(fmt: list[str], days: int, kind: list[str] | None):
     from datetime import date, timedelta
 
     from mtg.ingest import mtgo
+
     events = mtgo.load(_formats(fmt), date.today() - timedelta(days=days), _kinds(kind))
     if not events:
         names = "/".join(fmt)
-        typer.echo(f"no stored {names} events in the last {days} days — run: mtg ingest mtgo -f {fmt[0]}",
-                   err=True)
+        typer.echo(
+            f"no stored {names} events in the last {days} days — run: mtg ingest mtgo -f {fmt[0]}", err=True
+        )
         raise typer.Exit(1)
     return events
 
@@ -153,15 +203,17 @@ def meta_cards(
 ) -> None:
     """Most-played cards: share of decks, average copies, main vs side."""
     from mtg.analysis import metagame
+
     events = _events(fmt, days, kind)
     n = sum(len(e.decks) for e in events)
     distinct = len({d.fingerprint for e in events for d in e.decks})
     stats = metagame.card_stats(events, board)
     typer.echo(f"{n} decks ({distinct} distinct lists) from {len(events)} events\n")
     typer.echo(f"{'decks':>6} {'share':>6} {'avg':>4}  {'main':>4} {'side':>4}  card")
-    for s in stats[:top or None]:
-        typer.echo(f"{s.decks:>6} {s.share(n):>6.0%} {s.avg:>4.1f}  "
-                   f"{s.main_decks:>4} {s.side_decks:>4}  {s.name}")
+    for s in stats[: top or None]:
+        typer.echo(
+            f"{s.decks:>6} {s.share(n):>6.0%} {s.avg:>4.1f}  {s.main_decks:>4} {s.side_decks:>4}  {s.name}"
+        )
 
 
 @meta_app.command("decks")
@@ -175,6 +227,7 @@ def meta_decks(
     """List stored decks; `mtg meta show <event> <player>` prints one.
     The 6-character column is the list's fingerprint: equal values are the same 75."""
     from mtg.analysis import metagame
+
     for e, d in metagame.find_decks(_events(fmt, days, kind), card, player):
         place = d.record or (f"#{d.rank}" if d.rank else "")
         typer.echo(f"{e.date}  {e.kind:<10} {place:>5}  {d.fingerprint[:6]}  {d.player:<20} {e.slug}")
@@ -190,6 +243,7 @@ def meta_show(
     import json
 
     from mtg.ingest import mtgo
+
     path = mtgo.store_dir() / f"{event}.json"
     if not path.exists():
         raise typer.BadParameter(f"no stored event {event} — run: mtg ingest mtgo")
@@ -211,6 +265,7 @@ def legal(
 ) -> None:
     """Is a deck legal? Size, copies, bans, sideboard, commander color identity. 'all' checks every deck."""
     from mtg.analysis import legality
+
     cfg = config.load()
     cat = _catalog()
     targets = vault.decks(cfg.mtg_dir) if deck == "all" else [vault.find(cfg.mtg_dir, deck)]
@@ -236,7 +291,9 @@ def decks() -> None:
     """List the deck notes the vault holds."""
     cfg = config.load()
     for d in vault.decks(cfg.mtg_dir):
-        typer.echo(f"{d.slug:<28} {d.meta.get('format', ''):<10} {d.meta.get('status', ''):<10} {d.count()} cards")
+        typer.echo(
+            f"{d.slug:<28} {d.meta.get('format', ''):<10} {d.meta.get('status', ''):<10} {d.count()} cards"
+        )
 
 
 SHOW = ("buy", "own", "all")
@@ -247,10 +304,13 @@ def own(
     deck: DeckRef,
     show: str = typer.Option("buy", "--show", "-s", help="buy | own | all"),
     all_cards: bool = typer.Option(False, "--all", "-a", help="Same as --show all"),
-    on_arena: bool = typer.Option(False, "--arena", help="Check against your Arena collection instead of paper"),
+    on_arena: bool = typer.Option(
+        False, "--arena", help="Check against your Arena collection instead of paper"
+    ),
 ) -> None:
     """What to buy for a deck. Numbers are copies in the deck. -a adds what you own."""
     from mtg.analysis.ownership import BUY, MARK, OWN, summary, wildcards
+
     show = "all" if all_cards else show
     if show not in SHOW:
         raise typer.BadParameter(f"--show must be one of {', '.join(SHOW)}")
@@ -289,7 +349,9 @@ def own(
 
 
 @app.command()
-def price(deck: DeckRef, budget_tix: float = typer.Option(None, help="Compare the MTGO total to a tix budget")) -> None:
+def price(
+    deck: DeckRef, budget_tix: float = typer.Option(None, help="Compare the MTGO total to a tix budget")
+) -> None:
     """Paper cost to finish the deck, and MTGO cost for the whole list."""
     cfg, cat, inv = _setup()
     rep = syncmod.analyse(vault.find(cfg.mtg_dir, deck), inv, cat)
@@ -341,10 +403,21 @@ def export_deck(
 def _run_sync(offline: bool = True) -> None:
     """Everything the data affects: collection pickup, prices, generated notes, logs."""
     from mtg.ingest import manabox
+
     cfg0 = config.load()
     if not offline:
-        from mtg.ingest import scryfall
+        from datetime import date, timedelta
+
+        from mtg.ingest import scryfall, tcgcsv
+
         typer.echo(scryfall.refresh())
+        try:
+            res = tcgcsv.ingest(date.today() - timedelta(days=3))
+            typer.echo(f"price archive: {len(res.fetched)} new days · {len(tcgcsv.stored_days())} stored")
+            for day, err in res.failed:
+                typer.echo(f"  ! price archive {day}: {err}", err=True)
+        except OSError as e:  # the archive is a bonus; never let it stop a sync
+            typer.echo(f"  ! price archive skipped: {e}", err=True)
     newest = manabox.newest_export(cfg0.downloads)
     stored = cfg0.collection_csv
     if newest and (not stored.exists() or newest.stat().st_mtime > stored.stat().st_mtime):
@@ -352,10 +425,14 @@ def _run_sync(offline: bool = True) -> None:
         typer.echo(f"picked up {newest.name} from Downloads")
     cfg, cat, inv = _setup()
     if not cfg.collection_csv.exists():
-        typer.echo("no collection yet — export from ManaBox to ~/Downloads, or: mtg ingest manabox <csv>", err=True)
+        typer.echo(
+            "no collection yet — export from ManaBox to ~/Downloads, or: mtg ingest manabox <csv>", err=True
+        )
     res = syncmod.run(cfg.mtg_dir, inv, cat)
-    typer.echo(f"{len(res.decks)} decks · {res.changed_notes} notes updated · "
-               f"{res.prices_logged} prices logged · versions changed: {', '.join(res.versions) or 'none'}")
+    typer.echo(
+        f"{len(res.decks)} decks · {res.changed_notes} notes updated · "
+        f"{res.prices_logged} prices logged · versions changed: {', '.join(res.versions) or 'none'}"
+    )
     if res.removed:
         typer.echo(f"removed stale generated notes: {', '.join(res.removed)}")
     for w in res.warnings:
@@ -363,14 +440,15 @@ def _run_sync(offline: bool = True) -> None:
 
 
 @app.command("sync")
-def sync_cmd(offline: bool = typer.Option(False, help="Skip the Scryfall refresh")) -> None:
-    """Refresh prices, pick up a new ManaBox export, rewrite _generated/, append _log/."""
+def sync_cmd(offline: bool = typer.Option(False, help="Skip the Scryfall refresh and price archive")) -> None:
+    """Refresh prices and the price archive, pick up a ManaBox export, rewrite _generated/, append _log/."""
     _run_sync(offline=offline)
 
 
 def _watched(cfg: config.Config) -> dict[str, float]:
     """Everything whose change should trigger a resync, with its mtime."""
     from mtg.ingest import manabox
+
     paths = [p for p in vault.deck_notes(cfg.mtg_dir)]
     paths += [cfg.collection_csv, cfg.arena_list, config.config_path()]
     newest = manabox.newest_export(cfg.downloads)
@@ -384,6 +462,7 @@ def watch(interval: float = typer.Option(5.0, help="Seconds between checks")) ->
     """Resync whenever a deck note is saved or a new ManaBox export lands. Ctrl-C to stop."""
     import time
     from datetime import datetime
+
     cfg = config.load()
     typer.echo(f"watching {cfg.mtg_dir} and ~/Downloads — Ctrl-C to stop")
     _run_sync(offline=True)
@@ -393,7 +472,9 @@ def watch(interval: float = typer.Option(5.0, help="Seconds between checks")) ->
             time.sleep(interval)
             now = _watched(cfg)
             if now != seen:
-                changed = sorted(Path(p).name for p in set(now) ^ set(seen) | {p for p in now if seen.get(p) != now[p]})
+                changed = sorted(
+                    Path(p).name for p in set(now) ^ set(seen) | {p for p in now if seen.get(p) != now[p]}
+                )
                 typer.echo(f"\n{datetime.now():%H:%M:%S} changed: {', '.join(changed)}")
                 _run_sync(offline=True)
                 seen = _watched(cfg)
@@ -409,6 +490,7 @@ def _show_schedule() -> None:
     from datetime import datetime
 
     from mtg import schedule as sched
+
     st = sched.status()
     if not st.installed and not st.loaded:
         typer.echo("no schedule — set one with: mtg schedule set 07:00")
@@ -421,8 +503,9 @@ def _show_schedule() -> None:
     reload = "mtg schedule set " + " ".join(sched.fmt(t) for t in st.times)
     typer.echo(f"  loaded     {'yes' if st.loaded else 'NO — reload with: ' + reload}")
     if st.loaded:
-        typer.echo(f"  runs       {st.runs or '0'}   last exit {st.last_exit or '—'}   "
-                   f"state {st.state or '—'}")
+        typer.echo(
+            f"  runs       {st.runs or '0'}   last exit {st.last_exit or '—'}   state {st.state or '—'}"
+        )
     typer.echo(f"  log        {sched.log_path()}")
     typer.echo(f"  plist      {sched.plist_path()}")
 
@@ -446,6 +529,7 @@ def schedule_set(
 ) -> None:
     """Run `mtg sync` daily at these times. Replaces any existing schedule."""
     from mtg import schedule as sched
+
     try:
         parsed = sched.parse_times(times)
         sched.install(parsed)
@@ -458,6 +542,7 @@ def schedule_set(
 def schedule_remove() -> None:
     """Unload and delete the job."""
     from mtg import schedule as sched
+
     typer.echo(f"removed {sched.LABEL}" if sched.remove() else "no schedule to remove")
 
 

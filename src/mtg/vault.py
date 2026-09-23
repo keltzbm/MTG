@@ -37,7 +37,7 @@ def frontmatter(text: str) -> dict:
         if not sep or line.startswith((" ", "\t")):
             continue
         key, v = k.strip(), v.strip()
-        if " #" in v and not v.startswith(("\"", "'")):
+        if " #" in v and not v.startswith(('"', "'")):
             v = v.split(" #", 1)[0].strip()
         if v.startswith("[") and v.endswith("]"):
             out[key] = [x.strip().strip("\"'") for x in v[1:-1].split(",") if x.strip()]
@@ -73,15 +73,14 @@ def read_deck(path: Path) -> Deck | None:
         return None
     deck = parse_text(block, slug=path.stem)
     if not deck.entries:
-        return None   # a stub whose list hasn't been written yet
+        return None  # a stub whose list hasn't been written yet
     deck.meta = meta | {"path": str(path)}
     return deck
 
 
 def deck_notes(mtg_dir: Path) -> list[Path]:
     return sorted(
-        p for p in mtg_dir.rglob("*.md")
-        if not SKIP_DIRS.intersection(p.relative_to(mtg_dir).parts[:-1])
+        p for p in mtg_dir.rglob("*.md") if not SKIP_DIRS.intersection(p.relative_to(mtg_dir).parts[:-1])
     )
 
 

@@ -47,8 +47,12 @@ def _name(e: DeckEntry, catalog: Catalog | None) -> str:
 def moxfield(deck: Deck, catalog: Catalog | None = None, pins: dict | None = None) -> str:
     pins = pins or {}
     out = []
-    for board, header in (("commander", "Commander"), ("companion", "Companion"),
-                          ("main", "Deck"), ("sideboard", "Sideboard")):
+    for board, header in (
+        ("commander", "Commander"),
+        ("companion", "Companion"),
+        ("main", "Deck"),
+        ("sideboard", "Sideboard"),
+    ):
         cards = deck.board(board)
         if cards:
             out += [header] + [_line(e, _name(e, catalog), pins) for e in cards] + [""]
@@ -66,7 +70,10 @@ def mtgo(deck: Deck, catalog: Catalog | None = None, pins: dict | None = None) -
         return catalog.mtgo_name(e.oracle_id) if (catalog and e.oracle_id) else e.name.split(" // ")[0]
 
     main = [f"{e.quantity} {nm(e)}" for e in deck.board("main")]
-    side = [f"{e.quantity} {nm(e)}" for e in deck.board("commander") + deck.board("companion") + deck.board("sideboard")]
+    side = [
+        f"{e.quantity} {nm(e)}"
+        for e in deck.board("commander") + deck.board("companion") + deck.board("sideboard")
+    ]
     return "\n".join(main + ([""] + side if side else [])) + "\n"
 
 

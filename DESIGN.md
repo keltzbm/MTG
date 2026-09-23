@@ -22,6 +22,7 @@ Both are the same bug: **name is not a key.**
 |---|---|
 | Key everything by Scryfall `oracle_id` | Names collide and differ across printings. Resolve once, at the edge. |
 | Scryfall bulk JSON, not scraping (MTGO decklists are the one scrape — no API exists) | Daily, authoritative, includes legalities and prices — **paper USD and MTGO tix** (Scryfall sources tix from Cardhoarder). |
+| tcgcsv daily archives for price history, stored raw | One request per day covers every game's TCGplayer prices, back to 2024-02-08. Kept compressed and untouched so any later loader can re-read them. |
 | DuckDB for card data only | Loads the ~500 MB bulk file directly. The collection is re-read from the ManaBox CSV each run — 2,500 rows don't need a database. |
 | Dataclasses, stdlib where possible | Validation happens at ingest; runtime deps are just `typer` and `duckdb`. |
 | WUBRG color ordering | The old `sorted()` produced `BGU`; every external source says `UBG`. |
@@ -69,7 +70,7 @@ src/mtg/
 ├── vault.py        read deck notes, frontmatter, buy lines — read-only
 ├── sync.py         the work behind `mtg sync`, CLI- and DB-free
 ├── models/         Printing, Prices, Deck, DeckEntry, Holding
-├── ingest/         scryfall, manabox, decklist, precon, arena, mtgo
+├── ingest/         scryfall, manabox, decklist, precon, arena, mtgo, tcgcsv
 ├── store/          Catalog protocol + DuckDB implementation
 ├── analysis/       resolve, ownership, pricing, colors, legality, metagame, mana*
 ├── export/         formats (moxfield/manabox/mtgo/tcgplayer), obsidian

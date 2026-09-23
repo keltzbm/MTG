@@ -24,12 +24,48 @@ LEGAL = {"commander": "legal", "modern": "not_legal", "legacy": "legal", "vintag
 NOWHERE = {k: "not_legal" for k in LEGAL}
 
 
-def _row(sid, oid, name, set_code, released, *, layout="normal", type_line="Enchantment", ci=("G",),
-         legal=LEGAL, text="text", faces=None, usd=1.0, tix=0.1, digital=False, rarity="rare"):
+def _row(
+    sid,
+    oid,
+    name,
+    set_code,
+    released,
+    *,
+    layout="normal",
+    type_line="Enchantment",
+    ci=("G",),
+    legal=LEGAL,
+    text="text",
+    faces=None,
+    usd=1.0,
+    tix=0.1,
+    digital=False,
+    rarity="rare",
+):
     front = name.split(" // ")[0]
-    return (sid, oid, name, name.lower(), front.lower(), set_code, "1", layout, "2015", "black",
-            digital, released, rarity, ["paper", "mtgo"], type_line, list(ci), json.dumps(legal),
-            text, json.dumps(faces) if faces is not None else None, usd, tix)
+    return (
+        sid,
+        oid,
+        name,
+        name.lower(),
+        front.lower(),
+        set_code,
+        "1",
+        layout,
+        "2015",
+        "black",
+        digital,
+        released,
+        rarity,
+        ["paper", "mtgo"],
+        type_line,
+        list(ci),
+        json.dumps(legal),
+        text,
+        json.dumps(faces) if faces is not None else None,
+        usd,
+        tix,
+    )
 
 
 ROWS = [
@@ -38,14 +74,39 @@ ROWS = [
     _row("s2", "o-lib", "Sylvan Library", "wc26", "2026-08-01", legal=NOWHERE, usd=None),
     # a Secret Lair reversible folded onto the real card (newer, doubled type line)
     _row("s3", "o-sol", "Sol Ring", "c21", "2021-04-23", type_line="Artifact", ci=()),
-    _row("s4", "o-sol", "Sol Ring", "sld", "2026-01-01", layout="reversible_card",
-         type_line="Artifact // Artifact", ci=()),
+    _row(
+        "s4",
+        "o-sol",
+        "Sol Ring",
+        "sld",
+        "2026-01-01",
+        layout="reversible_card",
+        type_line="Artifact // Artifact",
+        ci=(),
+    ),
     # a split card and an MDFC whose text lives only on the faces
-    _row("s5", "o-fire", "Fire // Ice", "mh2", "2021-06-18", layout="split", type_line="Instant // Instant",
-         ci=("U", "R")),
-    _row("s6", "o-mdfc", "Valakut Awakening // Valakut Stoneforge", "znr", "2020-09-25",
-         layout="modal_dfc", type_line="Instant // Land", ci=("R",), text=None,
-         faces=[{"oracle_text": "Put any number of cards"}, {"oracle_text": "{T}: Add {R}."}]),
+    _row(
+        "s5",
+        "o-fire",
+        "Fire // Ice",
+        "mh2",
+        "2021-06-18",
+        layout="split",
+        type_line="Instant // Instant",
+        ci=("U", "R"),
+    ),
+    _row(
+        "s6",
+        "o-mdfc",
+        "Valakut Awakening // Valakut Stoneforge",
+        "znr",
+        "2020-09-25",
+        layout="modal_dfc",
+        type_line="Instant // Land",
+        ci=("R",),
+        text=None,
+        faces=[{"oracle_text": "Put any number of cards"}, {"oracle_text": "{T}: Add {R}."}],
+    ),
     # banned somewhere on one printing only
     _row("s7", "o-crypt", "Mana Crypt", "2xm", "2020-08-07", legal={**LEGAL, "commander": "banned"}),
     _row("s8", "o-crypt", "Mana Crypt", "sld", "2025-01-01"),
@@ -84,10 +145,18 @@ def test_color_identity_is_a_tuple(catalog):
     assert catalog.rules("o-sol").color_identity == ()
 
 
-@pytest.mark.parametrize("name, oid", [
-    ("Fire // Ice", "o-fire"), ("fire // ice", "o-fire"), ("Fire/Ice", "o-fire"), ("Fire", "o-fire"),
-    ("  Sylvan Library ", "o-lib"), ("Valakut Awakening", "o-mdfc"), ("Not A Card", None),
-])
+@pytest.mark.parametrize(
+    "name, oid",
+    [
+        ("Fire // Ice", "o-fire"),
+        ("fire // ice", "o-fire"),
+        ("Fire/Ice", "o-fire"),
+        ("Fire", "o-fire"),
+        ("  Sylvan Library ", "o-lib"),
+        ("Valakut Awakening", "o-mdfc"),
+        ("Not A Card", None),
+    ],
+)
 def test_resolve(catalog, name, oid):
     assert catalog.resolve(name) == oid
 
