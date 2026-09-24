@@ -6,6 +6,14 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 
 ## [Unreleased]
 
+### Added
+- CI on GitHub Actions for every push to `main` and every pull request: `ruff check`, `ruff format --check`,
+  and the test suite on Linux and macOS with Python 3.12, 3.13, and 3.14 (the versions `requires-python`
+  allows).
+
+### Changed
+- `tests/test_sync.py` formatted with `ruff format`; the whole repo now passes the format check.
+
 ## [0.3.0] — 2026-09-23
 
 ### Added

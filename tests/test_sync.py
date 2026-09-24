@@ -1,4 +1,3 @@
-
 from mtg import sync
 
 NOTE = """---

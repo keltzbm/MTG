@@ -1,5 +1,7 @@
 # mtg
 
+[![CI](https://github.com/keltzbm/MTG/actions/workflows/ci.yml/badge.svg)](https://github.com/keltzbm/MTG/actions/workflows/ci.yml)
+
 What I own, what I'm building, what the gap costs — in paper and on MTGO —
 rendered into my Obsidian vault. Design: [DESIGN.md](DESIGN.md).
 
