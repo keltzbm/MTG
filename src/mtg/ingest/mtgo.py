@@ -278,7 +278,10 @@ def ingest(
             res.failed.append((url, str(e)))
             continue
         for slug in event_slugs(index):
-            name, day, _ = parse_slug(slug)
+            parsed = parse_slug(slug)
+            if parsed is None:
+                continue
+            name, day, _ = parsed
             if (fmts and event_format(name) not in fmts) or classify(name) not in kinds:
                 continue
             if not since.isoformat() <= day <= until.isoformat():

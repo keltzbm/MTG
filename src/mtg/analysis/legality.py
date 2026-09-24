@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 from mtg.analysis.colors import wubrg_sort
 from mtg.analysis.resolve import resolve_deck
-from mtg.models import CardRules, Deck
+from mtg.models import CardRules, Deck, DeckEntry
 from mtg.store import Catalog
 
 BUILT_FORMATS = ("modern", "legacy", "pioneer", "pauper")
@@ -173,6 +173,15 @@ def _pairs(r: CardRules) -> bool:
     return any(k in text for k in _PAIRING) or "Background" in r.type_line or "Doctor" in r.type_line
 
 
+def _matched(entries: list[DeckEntry]) -> list[tuple[str, DeckEntry]]:
+    """Entries resolved to a card, each paired with its oracle id."""
+    out: list[tuple[str, DeckEntry]] = []
+    for e in entries:
+        if e.oracle_id:
+            out.append((e.oracle_id, e))
+    return out
+
+
 def check_deck(deck: Deck, catalog: Catalog, fmt: str | None = None) -> LegalityReport:
     """Every rule the deck breaks in `fmt` (default: the note's format)."""
     fmt = normalize_format(fmt or deck.format)
@@ -184,9 +193,9 @@ def check_deck(deck: Deck, catalog: Catalog, fmt: str | None = None) -> Legality
 
     for name in resolve_deck(deck, catalog):
         rep.error("not matched to a card", name)
-    entries = [e for e in deck.entries if e.oracle_id]
-    card_rules = {e.oracle_id: catalog.rules(e.oracle_id) for e in entries}
-    if entries and all(r is None for r in card_rules.values()):
+    matched = _matched(deck.entries)
+    card_rules = {oid: catalog.rules(oid) for oid, _ in matched}
+    if matched and all(r is None for r in card_rules.values()):
         rep.error(STALE)
         return rep
 
@@ -211,12 +220,12 @@ def check_deck(deck: Deck, catalog: Catalog, fmt: str | None = None) -> Legality
             rep.warn(f"commander section ignored — {fmt} has no command zone")
 
     # per card: status and copies (main + sideboard combined)
-    counted = [e for e in entries if rules.commander or e.board != "commander"]
+    counted = [(oid, e) for oid, e in matched if rules.commander or e.board != "commander"]
     if rules.commander:
-        counted = [e for e in counted if e.board != "sideboard"]
+        counted = [(oid, e) for oid, e in counted if e.board != "sideboard"]
     totals: dict[str, int] = {}
-    for e in counted:
-        totals[e.oracle_id] = totals.get(e.oracle_id, 0) + e.quantity
+    for oid, e in counted:
+        totals[oid] = totals.get(oid, 0) + e.quantity
     for oid, n in totals.items():
         name = catalog.name(oid)
         r = card_rules[oid]
@@ -240,24 +249,26 @@ def check_deck(deck: Deck, catalog: Catalog, fmt: str | None = None) -> Legality
     return rep
 
 
-def _check_commanders(deck: Deck, catalog: Catalog, card_rules: dict, fmt: str, rep: LegalityReport) -> None:
-    cmdrs = [e for e in deck.board("commander") if e.oracle_id]
+def _check_commanders(
+    deck: Deck, catalog: Catalog, card_rules: dict[str, CardRules | None], fmt: str, rep: LegalityReport
+) -> None:
+    cmdrs = [oid for oid, _ in _matched(deck.board("commander"))]
     if not deck.board("commander"):
         rep.error("no commander — add a Commander section")
         return
     if len(cmdrs) > 2 and fmt != "oathbreaker":
         rep.error(f"{len(cmdrs)} commanders — at most 2")
+    cmdr_rules = [card_rules[oid] for oid in cmdrs]
     if fmt != "oathbreaker":
-        for e in cmdrs:
-            r = card_rules[e.oracle_id]
+        for oid, r in zip(cmdrs, cmdr_rules, strict=True):
             if r and not can_be_commander(r):
-                rep.warn("not a legendary creature — check it can lead", catalog.name(e.oracle_id))
-        pairable = [card_rules[e.oracle_id] and _pairs(card_rules[e.oracle_id]) for e in cmdrs]
+                rep.warn("not a legendary creature — check it can lead", catalog.name(oid))
+        pairable = [r is not None and _pairs(r) for r in cmdr_rules]
         if len(cmdrs) == 2 and not all(pairable):
             rep.warn("two commanders, but not both partner / background / companion pairs")
 
-    identity = {c for e in cmdrs if card_rules[e.oracle_id] for c in card_rules[e.oracle_id].color_identity}
-    seen = set()
+    identity = {c for r in cmdr_rules if r for c in r.color_identity}
+    seen: set[str] = set()
     for e in deck.entries:
         if e.board in {"commander", "sideboard"} or not e.oracle_id or e.oracle_id in seen:
             continue

@@ -115,7 +115,7 @@ def load(bulk_file: Path) -> int:
             # schema — fall back to full inference (slower, same result).
             _create(con, inferred)
         _fold_reversibles(con)
-        return con.execute("SELECT count(*) FROM printings").fetchone()[0]
+        return con.execute("SELECT count(*) FROM printings").fetchall()[0][0]
     finally:
         con.close()
 

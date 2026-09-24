@@ -443,9 +443,9 @@ def _run_sync(offline: bool = True) -> None:
         msg = scryfall.refresh(progress=_download_meter("Scryfall bulk data"))
         _say(msg)
         try:
-            res = tcgcsv.ingest(date.today() - timedelta(days=3))
-            typer.echo(f"price archive: {len(res.fetched)} new days · {len(tcgcsv.stored_days())} stored")
-            for day, err in res.failed:
+            archive = tcgcsv.ingest(date.today() - timedelta(days=3))
+            typer.echo(f"price archive: {len(archive.fetched)} new days · {len(tcgcsv.stored_days())} stored")
+            for day, err in archive.failed:
                 typer.echo(f"  ! price archive {day}: {err}", err=True)
         except OSError as e:  # the archive is a bonus; never let it stop a sync
             typer.echo(f"  ! price archive skipped: {e}", err=True)
