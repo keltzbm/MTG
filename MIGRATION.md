@@ -21,4 +21,4 @@ checking anything out: `git show v0.1.0:classes.py`
 - One row per printing — quantities are summed per `oracle_id`.
 - Sealed precon contents aren't in the export — scan precons into ManaBox; the export is the only record of what you own.
 - Alphabetical color sorting gives `BGU` — `wubrg_sort()`.
-- The repo sits beside a synced vault — card data lives in `~/.local/share/mtg`.
+- The repo sits beside a synced vault — card data lives in `~/.local/share/riffle`.

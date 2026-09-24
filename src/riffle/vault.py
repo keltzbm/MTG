@@ -8,8 +8,8 @@ whose body holds a decklist in a fenced code block — preferably under a
 import re
 from pathlib import Path
 
-from mtg.ingest.decklist import LINE, parse_text
-from mtg.models import Deck
+from riffle.ingest.decklist import LINE, parse_text
+from riffle.models import Deck
 
 SKIP_DIRS = {"_generated", "_log", "archetypes", "matchups"}
 FENCE = re.compile(r"^```[^\n]*\n(.*?)^```", re.M | re.S)

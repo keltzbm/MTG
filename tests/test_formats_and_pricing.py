@@ -1,11 +1,11 @@
 from collections import Counter
 
-from mtg.analysis.ownership import diff
-from mtg.analysis.pricing import price
-from mtg.analysis.resolve import resolve_deck, resolve_holdings
-from mtg.export import formats
-from mtg.ingest.decklist import parse_text
-from mtg.models import Holding
+from riffle.analysis.ownership import diff
+from riffle.analysis.pricing import price
+from riffle.analysis.resolve import resolve_deck, resolve_holdings
+from riffle.export import formats
+from riffle.ingest.decklist import parse_text
+from riffle.models import Holding
 
 LIST = (
     "Commander\n1 Aesi, Tyrant of Gyre Strait\n\nDeck\n1 Sol Ring\n1 Cyclonic Rift\n1 Fire // Ice\n2 Forest\n"

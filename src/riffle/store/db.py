@@ -10,8 +10,8 @@ from pathlib import Path
 
 import duckdb
 
-from mtg.config import data_dir
-from mtg.models import CardRules, Prices, Printing, merge_legalities
+from riffle.config import data_dir
+from riffle.models import CardRules, Prices, Printing, merge_legalities
 
 BASICS = {"plains", "island", "swamp", "mountain", "forest", "wastes"}
 
@@ -23,7 +23,7 @@ def db_path() -> Path:
 def connect(path: Path | None = None, read_only: bool = True) -> duckdb.DuckDBPyConnection:
     path = path or db_path()
     if read_only and not path.exists():
-        raise FileNotFoundError("no card data yet — run: mtg ingest scryfall")
+        raise FileNotFoundError("no card data yet — run: riffle ingest scryfall")
     path.parent.mkdir(parents=True, exist_ok=True)
     return duckdb.connect(str(path), read_only=read_only)
 

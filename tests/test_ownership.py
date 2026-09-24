@@ -1,9 +1,9 @@
 from collections import Counter
 
-from mtg.analysis.ownership import BUY, OWN, diff, summary
-from mtg.analysis.resolve import counts, resolve_deck, resolve_holdings
-from mtg.ingest.decklist import parse_text
-from mtg.models import Holding
+from riffle.analysis.ownership import BUY, OWN, diff, summary
+from riffle.analysis.resolve import counts, resolve_deck, resolve_holdings
+from riffle.ingest.decklist import parse_text
+from riffle.models import Holding
 
 
 def test_name_is_not_a_key_holdings_resolve_by_printing_first(cat):

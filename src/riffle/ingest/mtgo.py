@@ -21,8 +21,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
 
-from mtg import net
-from mtg.config import data_dir
+from riffle import net
+from riffle.config import data_dir
 
 BASE = "https://www.mtgo.com"
 KINDS = ("league", "challenge", "showcase", "qualifier", "preliminary", "other")
@@ -57,7 +57,7 @@ class MtgoDeck:
         return hashlib.sha1(f"{part(self.main)}||{part(self.side)}".encode()).hexdigest()[:12]
 
     def to_text(self) -> str:
-        """MTGO .txt: main, blank line, sideboard — readable by `mtg own`."""
+        """MTGO .txt: main, blank line, sideboard — readable by `riffle own`."""
         lines = [f"{c.qty} {c.name}" for c in self.main]
         if self.side:
             lines += [""] + [f"{c.qty} {c.name}" for c in self.side]

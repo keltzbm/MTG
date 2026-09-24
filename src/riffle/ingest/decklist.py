@@ -15,7 +15,7 @@ sideboard only in MTGO-style lists (no headers).
 import re
 from pathlib import Path
 
-from mtg.models import Deck, DeckEntry
+from riffle.models import Deck, DeckEntry
 
 LINE = re.compile(
     r"^\s*(?P<qty>\d+)x?\s+(?P<name>.+?)"

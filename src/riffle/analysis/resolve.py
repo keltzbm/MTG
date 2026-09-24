@@ -3,8 +3,8 @@ never silently dropped."""
 
 from collections import Counter
 
-from mtg.models import Deck, Holding
-from mtg.store import Catalog
+from riffle.models import Deck, Holding
+from riffle.store import Catalog
 
 
 def resolve_deck(deck: Deck, catalog: Catalog) -> list[str]:

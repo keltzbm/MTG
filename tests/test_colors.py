@@ -1,6 +1,6 @@
 """WUBRG ordering is the invariant most likely to regress."""
 
-from mtg.analysis.colors import archetype_name, wubrg_sort
+from riffle.analysis.colors import archetype_name, wubrg_sort
 
 
 def test_wubrg_sort_is_not_alphabetical():

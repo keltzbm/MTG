@@ -9,5 +9,5 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# ad-hoc exports (mtg export -o out/...)
+# ad-hoc exports (riffle export -o out/...)
 out/

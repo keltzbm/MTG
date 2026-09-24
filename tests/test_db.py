@@ -9,7 +9,7 @@ import json
 import duckdb
 import pytest
 
-from mtg.store.db import DuckCatalog
+from riffle.store.db import DuckCatalog
 
 SCHEMA = """
 CREATE TABLE printings (

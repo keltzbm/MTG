@@ -2,7 +2,7 @@
 
 import pytest
 
-from mtg.ingest.decklist import load, parse_text
+from riffle.ingest.decklist import load, parse_text
 
 
 def _rows(text):

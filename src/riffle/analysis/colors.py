@@ -4,7 +4,7 @@ Ported wholesale from the old classes.py colorArchetypes dict, re-keyed to
 WUBRG order. The old sorted() produced BGU; every external source says UBG.
 """
 
-from mtg import WUBRG
+from riffle import WUBRG
 
 COLOR_ARCHETYPES: dict[tuple[str, ...], str] = {
     ("W",): "Mono White",

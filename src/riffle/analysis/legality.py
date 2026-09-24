@@ -11,14 +11,14 @@ rotate between decks.
 import re
 from dataclasses import dataclass, field
 
-from mtg.analysis.colors import wubrg_sort
-from mtg.analysis.resolve import resolve_deck
-from mtg.models import CardRules, Deck, DeckEntry
-from mtg.store import Catalog
+from riffle.analysis.colors import wubrg_sort
+from riffle.analysis.resolve import resolve_deck
+from riffle.models import CardRules, Deck, DeckEntry
+from riffle.store import Catalog
 
 BUILT_FORMATS = ("modern", "legacy", "pioneer", "pauper")
 
-STALE = "card data predates legality support — run: mtg ingest scryfall --force"
+STALE = "card data predates legality support — run: riffle ingest scryfall --force"
 
 
 @dataclass(frozen=True)

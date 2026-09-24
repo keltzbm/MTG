@@ -1,4 +1,4 @@
-from mtg.ingest.decklist import parse_text
+from riffle.ingest.decklist import parse_text
 
 
 def test_sections_quantities_and_pinned_printings():

@@ -1,4 +1,4 @@
-from mtg.ingest.scryfall import download_url
+from riffle.ingest.scryfall import download_url
 
 
 def test_prefers_jsonl_link_after_the_2026_format_change():

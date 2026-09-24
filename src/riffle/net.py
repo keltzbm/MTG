@@ -15,9 +15,9 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
-from mtg import __version__
+from riffle import __version__
 
-USER_AGENT = f"keltzbm-mtg/{__version__} (github.com/keltzbm/MTG)"
+USER_AGENT = f"riffle/{__version__} (github.com/keltzbm/riffle)"
 RETRY_STATUS = {429, 500, 502, 503, 504}
 CHUNK = 1 << 20
 

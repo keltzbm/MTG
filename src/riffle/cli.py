@@ -8,9 +8,9 @@ from typing import Annotated
 
 import typer
 
-from mtg import config, vault
-from mtg import sync as syncmod
-from mtg.export import formats
+from riffle import config, vault
+from riffle import sync as syncmod
+from riffle.export import formats
 
 app = typer.Typer(help="Collection, decks, prices, and the Obsidian vault.", no_args_is_help=True)
 ingest_app = typer.Typer(help="Load outside data.", no_args_is_help=True)
@@ -22,7 +22,7 @@ DeckRef = Annotated[str, typer.Argument(help="Deck note slug (aesi-lands) or a p
 
 
 def _catalog():
-    from mtg.store.db import DuckCatalog, connect
+    from riffle.store.db import DuckCatalog, connect
 
     return DuckCatalog(connect())
 
@@ -81,7 +81,7 @@ def ingest_scryfall(
     no_sync: bool = typer.Option(False, "--no-sync", help="Don't resync the vault afterwards"),
 ) -> None:
     """Download Scryfall's bulk card data and load it."""
-    from mtg.ingest import scryfall
+    from riffle.ingest import scryfall
 
     msg = scryfall.refresh(force=force, progress=_download_meter("Scryfall bulk data"))
     _say(msg)
@@ -102,7 +102,7 @@ def ingest_manabox(
     no_sync: bool = typer.Option(False, "--no-sync", help="Don't resync the vault afterwards"),
 ) -> None:
     """Copy a ManaBox collection export into the data folder."""
-    from mtg.ingest import manabox
+    from riffle.ingest import manabox
 
     src = csv_path or manabox.newest_export(config.load().downloads)
     if src is None:
@@ -115,7 +115,7 @@ def ingest_manabox(
 @ingest_app.command("arena")
 def ingest_arena(path: Path) -> None:
     """Load an Arena collection export (text list or CSV with name + count)."""
-    from mtg.ingest import arena
+    from riffle.ingest import arena
 
     holdings = arena.load(path.expanduser())
     dest = config.load().arena_list
@@ -133,7 +133,7 @@ KindOpt = typer.Option(
 
 
 def _kinds(kind: list[str] | None) -> list[str] | None:
-    from mtg.ingest import mtgo
+    from riffle.ingest import mtgo
 
     bad = [k for k in kind or [] if k not in mtgo.KINDS]
     if bad:
@@ -163,7 +163,7 @@ def ingest_mtgo(
     delay: float = typer.Option(1.0, help="Seconds between page requests"),
 ) -> None:
     """Fetch MTGO decklists (league 5-0s, challenges, showcases) from mtgo.com."""
-    from mtg.ingest import mtgo
+    from riffle.ingest import mtgo
 
     since = date.today() - timedelta(days=days)
     res = mtgo.ingest(_formats(fmt), since, kinds=_kinds(kind), delay=delay, progress=typer.echo)
@@ -181,7 +181,7 @@ def ingest_tcgcsv(
     delay: float = typer.Option(0.25, help="Seconds between downloads"),
 ) -> None:
     """Download tcgcsv's daily TCGplayer price archives (every game) that aren't stored yet."""
-    from mtg.ingest import tcgcsv
+    from riffle.ingest import tcgcsv
 
     try:
         start = date.fromisoformat(since) if since else date.today() - timedelta(days=days)
@@ -199,7 +199,7 @@ def ingest_tcgcsv(
 
 
 def _archive_summary(res) -> str:
-    from mtg.ingest import tcgcsv
+    from riffle.ingest import tcgcsv
 
     days = tcgcsv.stored_days()
     span = f"{days[0]} → {days[-1]}" if days else "none yet"
@@ -213,13 +213,14 @@ def _archive_summary(res) -> str:
 
 
 def _events(fmt: list[str], days: int, kind: list[str] | None):
-    from mtg.ingest import mtgo
+    from riffle.ingest import mtgo
 
     events = mtgo.load(_formats(fmt), date.today() - timedelta(days=days), _kinds(kind))
     if not events:
         names = "/".join(fmt)
         typer.echo(
-            f"no stored {names} events in the last {days} days — run: mtg ingest mtgo -f {fmt[0]}", err=True
+            f"no stored {names} events in the last {days} days — run: riffle ingest mtgo -f {fmt[0]}",
+            err=True,
         )
         raise typer.Exit(1)
     return events
@@ -234,7 +235,7 @@ def meta_cards(
     top: int = typer.Option(40, help="Rows to show; 0 for all"),
 ) -> None:
     """Most-played cards: share of decks, average copies, main vs side."""
-    from mtg.analysis import metagame
+    from riffle.analysis import metagame
 
     events = _events(fmt, days, kind)
     n = sum(len(e.decks) for e in events)
@@ -256,9 +257,9 @@ def meta_decks(
     card: str = typer.Option(None, "--card", "-c", help="Only decks playing this card"),
     player: str = typer.Option(None, "--player", "-p"),
 ) -> None:
-    """List stored decks; `mtg meta show <event> <player>` prints one.
+    """List stored decks; `riffle meta show <event> <player>` prints one.
     The 6-character column is the list's fingerprint: equal values are the same 75."""
-    from mtg.analysis import metagame
+    from riffle.analysis import metagame
 
     for e, d in metagame.find_decks(_events(fmt, days, kind), card, player):
         place = d.record or (f"#{d.rank}" if d.rank else "")
@@ -267,18 +268,18 @@ def meta_decks(
 
 @meta_app.command("show")
 def meta_show(
-    event: str = typer.Argument(..., help="Event slug, as `mtg meta decks` lists it"),
+    event: str = typer.Argument(..., help="Event slug, as `riffle meta decks` lists it"),
     player: str = typer.Argument(...),
-    out: Path = typer.Option(None, "-o", "--out", help="Write an MTGO .txt that `mtg own` can read"),
+    out: Path = typer.Option(None, "-o", "--out", help="Write an MTGO .txt that `riffle own` can read"),
 ) -> None:
     """Print one stored decklist in MTGO .txt form."""
     import json
 
-    from mtg.ingest import mtgo
+    from riffle.ingest import mtgo
 
     path = mtgo.store_dir() / f"{event}.json"
     if not path.exists():
-        raise typer.BadParameter(f"no stored event {event} — run: mtg ingest mtgo")
+        raise typer.BadParameter(f"no stored event {event} — run: riffle ingest mtgo")
     ev = mtgo.Event.from_dict(json.loads(path.read_text(encoding="utf-8")))
     deck = next((d for d in ev.decks if d.player.lower() == player.lower()), None)
     if deck is None:
@@ -296,7 +297,7 @@ def legal(
     fmt: str = typer.Option(None, "--format", "-f", help="Check against another format; default: the note's"),
 ) -> None:
     """Is a deck legal? Size, copies, bans, sideboard, commander color identity. 'all' checks every deck."""
-    from mtg.analysis import legality
+    from riffle.analysis import legality
 
     cfg = config.load()
     cat = _catalog()
@@ -341,7 +342,7 @@ def own(
     ),
 ) -> None:
     """What to buy for a deck. Numbers are copies in the deck. -a adds what you own."""
-    from mtg.analysis.ownership import BUY, MARK, OWN, summary, wildcards
+    from riffle.analysis.ownership import BUY, MARK, OWN, summary, wildcards
 
     show = "all" if all_cards else show
     if show not in SHOW:
@@ -350,7 +351,7 @@ def own(
     cat = _catalog()
     if on_arena:
         if not cfg.arena_list.exists():
-            raise typer.BadParameter("no Arena collection yet — run: mtg ingest arena <file>")
+            raise typer.BadParameter("no Arena collection yet — run: riffle ingest arena <file>")
         inv = syncmod.arena_inventory(cfg.arena_list, cat)
     else:
         inv = syncmod.inventory(cfg.collection_csv, cat)
@@ -434,11 +435,11 @@ def export_deck(
 
 def _run_sync(offline: bool = True) -> None:
     """Everything the data affects: collection pickup, prices, generated notes, logs."""
-    from mtg.ingest import manabox
+    from riffle.ingest import manabox
 
     cfg0 = config.load()
     if not offline:
-        from mtg.ingest import scryfall, tcgcsv
+        from riffle.ingest import scryfall, tcgcsv
 
         msg = scryfall.refresh(progress=_download_meter("Scryfall bulk data"))
         _say(msg)
@@ -457,7 +458,8 @@ def _run_sync(offline: bool = True) -> None:
     cfg, cat, inv = _setup()
     if not cfg.collection_csv.exists():
         typer.echo(
-            "no collection yet — export from ManaBox to ~/Downloads, or: mtg ingest manabox <csv>", err=True
+            "no collection yet — export from ManaBox to ~/Downloads, or: riffle ingest manabox <csv>",
+            err=True,
         )
     res = syncmod.run(cfg.mtg_dir, inv, cat)
     typer.echo(
@@ -478,7 +480,7 @@ def sync_cmd(offline: bool = typer.Option(False, help="Skip the Scryfall refresh
 
 def _watched(cfg: config.Config) -> dict[str, float]:
     """Everything whose change should trigger a resync, with its mtime."""
-    from mtg.ingest import manabox
+    from riffle.ingest import manabox
 
     paths = [p for p in vault.deck_notes(cfg.mtg_dir)]
     paths += [cfg.collection_csv, cfg.arena_list, config.config_path()]
@@ -513,25 +515,25 @@ def watch(interval: float = typer.Option(5.0, help="Seconds between checks")) ->
         typer.echo("\nstopped")
 
 
-schedule_app = typer.Typer(help="The daily launchd job that runs `mtg sync` (macOS).")
+schedule_app = typer.Typer(help="The daily launchd job that runs `riffle sync` (macOS).")
 app.add_typer(schedule_app, name="schedule")
 
 
 def _show_schedule() -> None:
     from datetime import datetime
 
-    from mtg import schedule as sched
+    from riffle import schedule as sched
 
     st = sched.status()
     if not st.installed and not st.loaded:
-        typer.echo("no schedule — set one with: mtg schedule set 07:00")
+        typer.echo("no schedule — set one with: riffle schedule set 07:00")
         return
     times = ", ".join(sched.fmt(t) for t in st.times) or "(none in plist)"
     nxt = sched.next_run(st.times, datetime.now())
     typer.echo(f"{sched.LABEL}")
     typer.echo(f"  times      {times}  (24-hour, daily)")
     typer.echo(f"  next run   {nxt:%a %Y-%m-%d %H:%M}" if nxt else "  next run   —")
-    reload = "mtg schedule set " + " ".join(sched.fmt(t) for t in st.times)
+    reload = "riffle schedule set " + " ".join(sched.fmt(t) for t in st.times)
     typer.echo(f"  loaded     {'yes' if st.loaded else 'NO — reload with: ' + reload}")
     if st.loaded:
         typer.echo(
@@ -558,8 +560,8 @@ def schedule_show() -> None:
 def schedule_set(
     times: list[str] = typer.Argument(..., help="24-hour HH:MM times, e.g. 07:00 19:30"),
 ) -> None:
-    """Run `mtg sync` daily at these times. Replaces any existing schedule."""
-    from mtg import schedule as sched
+    """Run `riffle sync` daily at these times. Replaces any existing schedule."""
+    from riffle import schedule as sched
 
     try:
         parsed = sched.parse_times(times)
@@ -572,7 +574,7 @@ def schedule_set(
 @schedule_app.command("remove")
 def schedule_remove() -> None:
     """Unload and delete the job."""
-    from mtg import schedule as sched
+    from riffle import schedule as sched
 
     typer.echo(f"removed {sched.LABEL}" if sched.remove() else "no schedule to remove")
 

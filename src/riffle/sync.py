@@ -1,17 +1,17 @@
-"""The work behind `mtg sync`, kept free of CLI and DuckDB so it's testable."""
+"""The work behind `riffle sync`, kept free of CLI and DuckDB so it's testable."""
 
 from collections import Counter
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 
-from mtg import vault
-from mtg.analysis import ownership, pricing
-from mtg.analysis.resolve import counts, resolve_deck, resolve_holdings
-from mtg.export import formats, obsidian
-from mtg.ingest import arena, manabox
-from mtg.models import Deck, Holding
-from mtg.store import Catalog
+from riffle import vault
+from riffle.analysis import ownership, pricing
+from riffle.analysis.resolve import counts, resolve_deck, resolve_holdings
+from riffle.export import formats, obsidian
+from riffle.ingest import arena, manabox
+from riffle.models import Deck, Holding
+from riffle.store import Catalog
 
 
 @dataclass

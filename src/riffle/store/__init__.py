@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from mtg.models import CardRules, Prices, Printing
+from riffle.models import CardRules, Prices, Printing
 
 
 class Catalog(Protocol):
@@ -29,4 +29,4 @@ class Catalog(Protocol):
 
     def rules(self, oracle_id: str) -> CardRules | None:
         """Legalities, color identity, type line, oracle text — None if the card
-        data predates these fields (re-run: mtg ingest scryfall --force)."""
+        data predates these fields (re-run: riffle ingest scryfall --force)."""

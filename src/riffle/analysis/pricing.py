@@ -7,8 +7,8 @@ the whole list — a digital collection doesn't share your paper cards.
 
 from dataclasses import dataclass
 
-from mtg.analysis.ownership import Row
-from mtg.store import Catalog
+from riffle.analysis.ownership import Row
+from riffle.store import Catalog
 
 
 @dataclass

@@ -1,6 +1,6 @@
-# MTG Tooling — Design
+# Riffle — Design
 
-Rewrite of `keltzbm/MTG`. The original scripts are tagged `v0.1.0`.
+A rewrite of my original MTG scripts, which are tagged `v0.1.0`.
 
 ## Purpose
 
@@ -48,16 +48,16 @@ One writer per file: scripts never write authored notes; you never edit logs.
 
 ## Where things live
 
-`~/atelier/github/mtg` sits **beside** the vault, not in it. Card data, the
-collection CSV, and sync state live in `~/.local/share/mtg`, outside anything
-pCloud syncs. Config is `~/.config/mtg/config.toml`.
+`~/atelier/github/riffle` sits **beside** the vault, not in it. Card data, the
+collection CSV, and sync state live in `~/.local/share/riffle`, outside anything
+pCloud syncs. Config is `~/.config/riffle/config.toml`.
 
 ## Milestones
 
 | | | Status |
 |---|---|---|
-| 1 | Collection truth: Scryfall + ManaBox, `mtg own` | done |
-| 2 | Obsidian export: `_generated/`, `mtg sync` | done |
+| 1 | Collection truth: Scryfall + ManaBox, `riffle own` | done |
+| 2 | Obsidian export: `_generated/`, `riffle sync` | done |
 | 3 | Analysis: mana demand/supply, curve, legality, playset eligibility | legality + playsets done; mana not started |
 | 4 | Prices and logging: paper + MTGO, price log, list versions | done — log rollup still to do |
 | 5 | Metagame ingest: MTGO decklists only | ingest + card stats done |
@@ -66,11 +66,11 @@ pCloud syncs. Config is `~/.config/mtg/config.toml`.
 ## Layout
 
 ```
-src/mtg/
+src/riffle/
 ├── config.py       XDG paths, config.toml
 ├── net.py          HTTP for every source: User-Agent, retries, 429s, streamed downloads
 ├── vault.py        read deck notes, frontmatter, buy lines — read-only
-├── sync.py         the work behind `mtg sync`, CLI- and DB-free
+├── sync.py         the work behind `riffle sync`, CLI- and DB-free
 ├── models/         Printing, Prices, Deck, DeckEntry, Holding
 ├── ingest/         scryfall, manabox, decklist, arena, mtgo, tcgcsv
 ├── store/          Catalog protocol + DuckDB implementation
