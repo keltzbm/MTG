@@ -12,9 +12,9 @@ actually own, so an import stops picking arbitrary printings. Cards you
 don't own stay unpinned.
 """
 
-from mtg.analysis.ownership import BUY, Row
-from mtg.models import Deck, DeckEntry, Holding
-from mtg.store import Catalog
+from riffle.analysis.ownership import BUY, Row
+from riffle.models import Deck, DeckEntry, Holding
+from riffle.store import Catalog
 
 FORMATS = ("moxfield", "manabox", "mtgo", "arena", "tcgplayer")
 

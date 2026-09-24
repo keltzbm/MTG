@@ -1,4 +1,4 @@
-"""Settings from $XDG_CONFIG_HOME/mtg/config.toml, with sensible defaults.
+"""Settings from $XDG_CONFIG_HOME/riffle/config.toml, with sensible defaults.
 
     vault = "~/atelier/library"
 
@@ -21,7 +21,7 @@ def _xdg(var: str, default: str) -> Path:
 
 
 def config_path() -> Path:
-    return _xdg("XDG_CONFIG_HOME", ".config") / "mtg" / "config.toml"
+    return _xdg("XDG_CONFIG_HOME", ".config") / "riffle" / "config.toml"
 
 
 def data_dir() -> Path:
@@ -29,11 +29,11 @@ def data_dir() -> Path:
 
     Never inside ~/atelier: that tree is synced.
     """
-    return _xdg("XDG_DATA_HOME", ".local/share") / "mtg"
+    return _xdg("XDG_DATA_HOME", ".local/share") / "riffle"
 
 
 DEFAULT_CONFIG = """\
-# mtg configuration
+# riffle configuration
 vault = "~/atelier/library"
 """
 

@@ -2,11 +2,11 @@ import os
 import time
 from collections import Counter
 
-from mtg.analysis.ownership import diff, wildcards
-from mtg.analysis.resolve import resolve_deck
-from mtg.export import formats, obsidian
-from mtg.ingest import arena, manabox
-from mtg.ingest.decklist import parse_text
+from riffle.analysis.ownership import diff, wildcards
+from riffle.analysis.resolve import resolve_deck
+from riffle.export import formats, obsidian
+from riffle.ingest import arena, manabox
+from riffle.ingest.decklist import parse_text
 
 
 def test_arena_text_and_csv_exports(tmp_path):

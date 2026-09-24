@@ -3,7 +3,7 @@
 Published daily; carries oracle ids, legalities, and prices — including
 MTGO tix (Scryfall sources those from Cardhoarder). One API request for the
 index, then one file from *.scryfall.io, which has no rate limit — at most
-once a day, since prices only change daily. Headers and 429 handling: mtg.net.
+once a day, since prices only change daily. Headers and 429 handling: riffle.net.
 
 Since 2026-07-20 bulk files are gzipped JSON Lines only, linked from
 `jsonl_download_uri`. The old `download_uri` (one big JSON array) is gone;
@@ -16,9 +16,9 @@ from pathlib import Path
 
 import duckdb
 
-from mtg import net
-from mtg.config import data_dir
-from mtg.store.db import connect, db_path
+from riffle import net
+from riffle.config import data_dir
+from riffle.store.db import connect, db_path
 
 BULK_INDEX = "https://api.scryfall.com/bulk-data"
 

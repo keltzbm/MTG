@@ -2,7 +2,7 @@
 
 import pytest
 
-from mtg import vault
+from riffle import vault
 
 
 @pytest.mark.parametrize(

@@ -1,11 +1,11 @@
-"""mtg.net against a fake urlopen: retries, rate limits, 404s, and streamed downloads."""
+"""riffle.net against a fake urlopen: retries, rate limits, 404s, and streamed downloads."""
 
 import io
 import urllib.error
 
 import pytest
 
-from mtg import net
+from riffle import net
 
 
 class Resp(io.BytesIO):
@@ -42,7 +42,8 @@ def test_every_request_identifies_the_tool(server):
     server["answers"] = [Resp(b"ok")]
     net.get("https://example.test", accept="application/json")
     req = server["requests"][0]
-    assert req.get_header("User-agent").startswith("keltzbm-mtg/")
+    ua = req.get_header("User-agent")
+    assert ua.startswith("riffle/") and "github.com/keltzbm/riffle" in ua
     assert req.get_header("Accept") == "application/json"
 
 

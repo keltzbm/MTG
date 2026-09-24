@@ -6,8 +6,8 @@ Two states only. Owned means scanned into ManaBox.
 from collections import Counter
 from dataclasses import dataclass
 
-from mtg.models import Deck
-from mtg.store import Catalog
+from riffle.models import Deck
+from riffle.store import Catalog
 
 OWN, BUY = "own", "buy"
 MARK = {OWN: "🟩", BUY: "🟥"}

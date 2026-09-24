@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from mtg import net
-from mtg.ingest import tcgcsv
+from riffle import net
+from riffle.ingest import tcgcsv
 
 ARCHIVE = tcgcsv.SEVEN_ZIP_MAGIC + b"payload"
 
@@ -43,7 +43,7 @@ def test_urls_and_paths(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     d = date(2026, 9, 21)
     assert tcgcsv.archive_url(d) == "https://tcgcsv.com/archive/tcgplayer/prices-2026-09-21.ppmd.7z"
-    assert tcgcsv.archive_path(d) == tmp_path / "mtg" / "tcgcsv" / "archive" / "prices-2026-09-21.ppmd.7z"
+    assert tcgcsv.archive_path(d) == tmp_path / "riffle" / "tcgcsv" / "archive" / "prices-2026-09-21.ppmd.7z"
 
 
 def test_fetches_missing_days_and_stores_them_as_downloaded(tmp_path, monkeypatch):

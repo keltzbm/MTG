@@ -10,7 +10,7 @@ Encoded here so they cost time once:
 import csv
 from pathlib import Path
 
-from mtg.models import Holding
+from riffle.models import Holding
 
 
 def _get(row: dict, *keys: str) -> str:

@@ -1,4 +1,4 @@
-"""The daily launchd job that runs `mtg sync` (macOS).
+"""The daily launchd job that runs `riffle sync` (macOS).
 
 One job, one label: setting times again replaces the old job, it never adds a
 second one. Times are 24-hour HH:MM. Everything that touches launchd goes
@@ -15,9 +15,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from mtg.config import data_dir
+from riffle.config import data_dir
 
-LABEL = "com.keltzbm.mtg-sync"
+LABEL = "com.keltzbm.riffle-sync"
 _TIME = re.compile(r"^(\d{1,2}):(\d{2})$")
 
 Runner = Callable[[list[str]], subprocess.CompletedProcess]

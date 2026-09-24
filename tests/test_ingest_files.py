@@ -2,10 +2,10 @@
 
 import pytest
 
-from mtg import config
-from mtg.analysis.resolve import counts, resolve_holdings
-from mtg.ingest import arena, manabox
-from mtg.models import Holding
+from riffle import config
+from riffle.analysis.resolve import counts, resolve_holdings
+from riffle.ingest import arena, manabox
+from riffle.models import Holding
 
 MANABOX = (
     "\ufeffName,Set code,Set name,Collector number,Foil,Rarity,Quantity,ManaBox ID,Scryfall ID,Language\n"
@@ -88,9 +88,10 @@ def test_config_defaults_and_xdg(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     cfg = config.load()
     assert cfg.obsolete is None and cfg.vault.name == "library"
-    assert config.data_dir() == tmp_path / "data" / "mtg"
+    assert config.config_path() == tmp_path / "cfg" / "riffle" / "config.toml"
+    assert config.data_dir() == tmp_path / "data" / "riffle"
     assert cfg.mtg_dir == cfg.vault / "tcg" / "mtg"
-    assert cfg.collection_csv == tmp_path / "data" / "mtg" / "collection.csv"
+    assert cfg.collection_csv == tmp_path / "data" / "riffle" / "collection.csv"
 
 
 def test_config_file_is_read_and_never_overwritten(tmp_path, monkeypatch):

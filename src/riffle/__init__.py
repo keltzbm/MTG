@@ -1,4 +1,4 @@
-"""Personal Magic tooling. See DESIGN.md.
+"""Riffle: card game tooling — collection, decks, prices, metagame. See DESIGN.md.
 
 Invariants:
   * oracle_id is the key. Names are resolved to it once, at the edge.

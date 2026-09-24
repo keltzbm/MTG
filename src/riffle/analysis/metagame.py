@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from mtg.ingest.mtgo import Event, MtgoDeck
+from riffle.ingest.mtgo import Event, MtgoDeck
 
 
 @dataclass

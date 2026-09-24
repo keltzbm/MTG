@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pytest
 
-from mtg import schedule as sched
+from riffle import schedule as sched
 
 
 class FakeLaunchctl:
@@ -33,11 +33,11 @@ class FakeLaunchctl:
         raise AssertionError(f"unexpected launchctl {verb}")
 
 
-PRINT = """gui/501/com.keltzbm.mtg-sync = {
+PRINT = """gui/501/com.keltzbm.riffle-sync = {
 	active count = 0
-	path = /Users/keltzbm/Library/LaunchAgents/com.keltzbm.mtg-sync.plist
+	path = /Users/keltzbm/Library/LaunchAgents/com.keltzbm.riffle-sync.plist
 	state = not running
-	program = /Users/keltzbm/atelier/github/mtg/.venv/bin/mtg
+	program = /Users/keltzbm/atelier/github/riffle/.venv/bin/riffle
 	runs = 3
 	last exit code = 0
 	event triggers = {
@@ -114,9 +114,9 @@ def test_next_run_with_no_times():
 
 
 def test_build_uses_absolute_paths_and_every_time(tmp_path):
-    d = sched.build([(7, 0), (19, 30)], tmp_path / "bin" / "mtg", tmp_path / "sync.log")
+    d = sched.build([(7, 0), (19, 30)], tmp_path / "bin" / "riffle", tmp_path / "sync.log")
     assert d["Label"] == sched.LABEL
-    assert d["ProgramArguments"] == [str(tmp_path / "bin" / "mtg"), "sync"]
+    assert d["ProgramArguments"] == [str(tmp_path / "bin" / "riffle"), "sync"]
     assert d["StartCalendarInterval"] == [{"Hour": 7, "Minute": 0}, {"Hour": 19, "Minute": 30}]
     assert d["StandardOutPath"] == d["StandardErrorPath"] == str(tmp_path / "sync.log")
     assert "~" not in plistlib.dumps(d).decode()
@@ -135,7 +135,7 @@ def test_parse_print_takes_the_job_state_not_the_trigger_state():
     info = sched.parse_print(PRINT)
     assert info == {
         "state": "not running",
-        "program": "/Users/keltzbm/atelier/github/mtg/.venv/bin/mtg",
+        "program": "/Users/keltzbm/atelier/github/riffle/.venv/bin/riffle",
         "runs": "3",
         "last exit code": "0",
     }
@@ -152,11 +152,11 @@ def _env(tmp_path, monkeypatch):
 def test_install_writes_loads_and_replaces(tmp_path, monkeypatch):
     path = _env(tmp_path, monkeypatch)
     lc = FakeLaunchctl(print_out=PRINT)
-    sched.install([(7, 0)], exe=tmp_path / "mtg", run=lc, path=path)
+    sched.install([(7, 0)], exe=tmp_path / "riffle", run=lc, path=path)
     assert lc.calls == ["bootout", "bootstrap"] and lc.loaded
-    assert (tmp_path / "data" / "mtg").is_dir()  # log dir exists before launchd needs it
+    assert (tmp_path / "data" / "riffle").is_dir()  # log dir exists before launchd needs it
 
-    sched.install([(6, 0), (18, 0)], exe=tmp_path / "mtg", run=lc, path=path)  # set again = replace
+    sched.install([(6, 0), (18, 0)], exe=tmp_path / "riffle", run=lc, path=path)  # set again = replace
     assert sched.read_times(path) == [(6, 0), (18, 0)]
     assert lc.calls[-2:] == ["bootout", "bootstrap"]
 
@@ -168,7 +168,7 @@ def test_install_writes_loads_and_replaces(tmp_path, monkeypatch):
 def test_install_reports_bootstrap_failure(tmp_path, monkeypatch):
     path = _env(tmp_path, monkeypatch)
     with pytest.raises(RuntimeError, match="bootstrap failed"):
-        sched.install([(7, 0)], exe=tmp_path / "mtg", run=FakeLaunchctl(bootstrap_rc=5), path=path)
+        sched.install([(7, 0)], exe=tmp_path / "riffle", run=FakeLaunchctl(bootstrap_rc=5), path=path)
     assert path.exists()  # written, just not loaded
 
 
@@ -176,7 +176,7 @@ def test_status_when_written_but_never_loaded(tmp_path, monkeypatch):
     """The exact v0.2.0 bug: a plist on disk that launchd never heard of."""
     path = _env(tmp_path, monkeypatch)
     path.parent.mkdir(parents=True)
-    path.write_bytes(plistlib.dumps(sched.build([(7, 0)], tmp_path / "mtg", tmp_path / "log")))
+    path.write_bytes(plistlib.dumps(sched.build([(7, 0)], tmp_path / "riffle", tmp_path / "log")))
     st = sched.status(run=FakeLaunchctl(loaded=False), path=path)
     assert st.installed and not st.loaded and st.runs is None
 
@@ -184,7 +184,7 @@ def test_status_when_written_but_never_loaded(tmp_path, monkeypatch):
 def test_remove(tmp_path, monkeypatch):
     path = _env(tmp_path, monkeypatch)
     lc = FakeLaunchctl()
-    sched.install([(7, 0)], exe=tmp_path / "mtg", run=lc, path=path)
+    sched.install([(7, 0)], exe=tmp_path / "riffle", run=lc, path=path)
     assert sched.remove(run=lc, path=path) is True
     assert not path.exists() and not lc.loaded
     assert sched.remove(run=lc, path=path) is False  # nothing left: says so, doesn't crash

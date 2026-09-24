@@ -16,7 +16,7 @@ is a later step, and it will need 7-Zip for the PPMd compression.
 
 A day that isn't published yet answers 404; it's reported as pending and
 tried again next run. tcgcsv asks for a pause between requests (their FAQ
-and docs); headers, retries and streaming live in mtg.net.
+and docs); headers, retries and streaming live in riffle.net.
 """
 
 import time
@@ -26,8 +26,8 @@ from datetime import date, timedelta
 from functools import partial
 from pathlib import Path
 
-from mtg import net
-from mtg.config import data_dir
+from riffle import net
+from riffle.config import data_dir
 
 BASE = "https://tcgcsv.com"
 FIRST_DAY = date(2024, 2, 8)

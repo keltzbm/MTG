@@ -1,4 +1,4 @@
-from mtg import sync
+from riffle import sync
 
 NOTE = """---
 game: mtg

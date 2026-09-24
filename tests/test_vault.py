@@ -1,4 +1,4 @@
-from mtg import vault
+from riffle import vault
 
 NOTE = """---
 game: mtg

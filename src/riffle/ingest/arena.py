@@ -10,8 +10,8 @@ Accepted here:
 import csv
 from pathlib import Path
 
-from mtg.ingest.decklist import parse_text
-from mtg.models import Holding
+from riffle.ingest.decklist import parse_text
+from riffle.models import Holding
 
 NAME_COLS = ("name", "card", "card name", "cardname")
 COUNT_COLS = ("count", "quantity", "qty", "owned", "amount")

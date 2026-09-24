@@ -3,10 +3,10 @@ from datetime import date
 
 import pytest
 
-from mtg import net
-from mtg.analysis import metagame
-from mtg.ingest import mtgo
-from mtg.ingest.decklist import parse_text
+from riffle import net
+from riffle.analysis import metagame
+from riffle.ingest import mtgo
+from riffle.ingest.decklist import parse_text
 
 INDEX = """
 <a href="/decklist/modern-challenge-32-2026-09-1912850001">Modern Challenge 32</a>

@@ -2,7 +2,7 @@
 
 import pytest
 
-from mtg.models import CardRules, Prices, Printing
+from riffle.models import CardRules, Prices, Printing
 
 CARDS = {
     # oracle_id: (name, layout, usd, tix)

@@ -1,7 +1,7 @@
 import pytest
 
-from mtg.analysis import legality
-from mtg.ingest.decklist import parse_text
+from riffle.analysis import legality
+from riffle.ingest.decklist import parse_text
 
 
 def _deck(text, fmt):
@@ -108,7 +108,7 @@ def test_stale_card_data(cat, monkeypatch):
 
 
 def test_one_odd_printing_cannot_hide_a_legal_card():
-    from mtg.models import merge_legalities
+    from riffle.models import merge_legalities
 
     normal = {"commander": "legal", "vintage": "restricted", "modern": "not_legal"}
     gold_border = {"commander": "not_legal", "vintage": "not_legal", "modern": "not_legal"}
