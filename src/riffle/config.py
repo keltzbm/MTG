@@ -1,6 +1,9 @@
 """Settings from $XDG_CONFIG_HOME/riffle/config.toml, with sensible defaults.
 
     vault = "~/atelier/library"
+    database_url = "postgresql+psycopg://tcg@localhost:5432/tcg"
+
+The database URL never holds a password: libpq reads it from ~/.pgpass.
 
 What you own comes from the ManaBox export alone: scan a precon into ManaBox
 to count it.
@@ -32,15 +35,20 @@ def data_dir() -> Path:
     return _xdg("XDG_DATA_HOME", ".local/share") / "riffle"
 
 
-DEFAULT_CONFIG = """\
+DEFAULT_DATABASE_URL = "postgresql+psycopg://tcg@localhost:5432/tcg"
+
+DEFAULT_CONFIG = f"""\
 # riffle configuration
 vault = "~/atelier/library"
+# Postgres; the password comes from ~/.pgpass, never from this file
+database_url = "{DEFAULT_DATABASE_URL}"
 """
 
 
 @dataclass
 class Config:
     vault: Path
+    database_url: str = DEFAULT_DATABASE_URL
     obsolete: dict[str, str] | None = None  # key -> why it's ignored
 
     @property
@@ -65,6 +73,7 @@ def load() -> Config:
     raw = tomllib.loads(path.read_text()) if path.exists() else tomllib.loads(DEFAULT_CONFIG)
     return Config(
         vault=Path(raw.get("vault", "~/atelier/library")).expanduser(),
+        database_url=raw.get("database_url", DEFAULT_DATABASE_URL),
         obsolete={k: why for k, why in OBSOLETE_KEYS.items() if k in raw} or None,
     )
 

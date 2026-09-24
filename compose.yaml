@@ -1,0 +1,21 @@
+# Local Postgres for Riffle: `riffle db up` starts it, `riffle db upgrade` migrates it.
+# Everything is named tcg (project, role, database) after the data, not the tool.
+name: tcg
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tcg
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: tcg
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale-provider=builtin --locale=C.UTF-8
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tcg -d tcg"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  pgdata:

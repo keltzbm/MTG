@@ -23,12 +23,45 @@ jobs:
       - run: uv run ruff format --check src tests
       - run: uv run mypy src
 
-  test:
-    runs-on: ${{ matrix.os }}
+  # Linux runs the database tests against a Postgres service container, set up
+  # like compose.yaml; RIFFLE_REQUIRE_POSTGRES makes them fail rather than skip
+  # if it isn't reachable. macOS runners have no Docker, so they skip there.
+  test-linux:
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.12", "3.13", "3.14"]
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: tcg
+          POSTGRES_PASSWORD: tcg
+          POSTGRES_DB: tcg
+          POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale-provider=builtin --locale=C.UTF-8
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tcg -d tcg"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PGPASSWORD: tcg
+      RIFFLE_REQUIRE_POSTGRES: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked
+      - run: uv run pytest
+
+  test-macos:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
         python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v6

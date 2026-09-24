@@ -1,4 +1,6 @@
-"""An in-memory Catalog so the logic is testable without DuckDB or a download."""
+"""Shared fixtures: an in-memory Catalog (no DuckDB, no download) and a test Postgres."""
+
+import os
 
 import pytest
 
@@ -145,3 +147,52 @@ class FakeCatalog:
 @pytest.fixture
 def cat():
     return FakeCatalog()
+
+
+# ---- Postgres ------------------------------------------------------------------
+# Database tests use their own database, tcg_test, dropped and recreated once per
+# session and migrated to head. Each test then runs in a transaction that's rolled
+# back, so tests never see each other's rows. No server reachable: the tests skip,
+# unless RIFFLE_REQUIRE_POSTGRES is set (Linux CI), where they fail instead.
+
+PG_TEST_URL = os.environ.get("RIFFLE_TEST_DATABASE_URL", "postgresql+psycopg://tcg@localhost:5432/tcg_test")
+
+
+@pytest.fixture(scope="session")
+def pg_engine():
+    from sqlalchemy import create_engine, make_url, text
+    from sqlalchemy.exc import OperationalError
+
+    from riffle.db import migrate
+
+    url = make_url(PG_TEST_URL)
+    if not (url.database or "").endswith("_test"):
+        pytest.fail(f"refusing to drop {url.database!r}: the test database's name must end in _test")
+    admin = create_engine(
+        url.set(database="postgres"), isolation_level="AUTOCOMMIT", connect_args={"connect_timeout": 3}
+    )
+    try:
+        with admin.connect() as conn:
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{url.database}" WITH (FORCE)'))
+            conn.execute(text(f'CREATE DATABASE "{url.database}"'))
+    except OperationalError:
+        if os.environ.get("RIFFLE_REQUIRE_POSTGRES"):
+            raise
+        pytest.skip(f"no Postgres at {url.render_as_string(hide_password=True)} (start it: riffle db up)")
+    finally:
+        admin.dispose()
+    engine = create_engine(url)
+    migrate.upgrade(engine)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def pg(pg_engine):
+    """A connection inside a transaction that's rolled back after the test."""
+    with pg_engine.connect() as conn:
+        trans = conn.begin()
+        try:
+            yield conn
+        finally:
+            trans.rollback()
