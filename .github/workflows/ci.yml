@@ -21,6 +21,7 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
+      - run: uv run mypy src
 
   test:
     runs-on: ${{ matrix.os }}

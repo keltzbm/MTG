@@ -10,9 +10,13 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 - CI on GitHub Actions for every push to `main` and every pull request: `ruff check`, `ruff format --check`,
   and the test suite on Linux and macOS with Python 3.12, 3.13, and 3.14 (the versions `requires-python`
   allows).
+- `mypy src` runs in CI; the code type-checks clean.
 
 ### Changed
 - `tests/test_sync.py` formatted with `ruff format`; the whole repo now passes the format check.
+- Type fixes found by mypy: code that uses a card's oracle id now receives it as a definite string instead
+  of re-reading an optional field, and `mtg sync` no longer reuses one variable for the price archive and
+  the sync result.
 
 ## [0.3.0] — 2026-09-23
 

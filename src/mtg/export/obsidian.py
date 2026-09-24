@@ -86,14 +86,17 @@ def deck_data(
 
 
 def collection_summary(holdings: list[Holding], catalog: Catalog, today: str) -> str:
-    counted = [h for h in holdings if h.source == "manabox" and h.oracle_id]
-    total = sum(h.quantity for h in counted)
-    unique = len({h.oracle_id for h in counted})
+    counted: list[tuple[str, Holding]] = []
+    for h in holdings:
+        if h.source == "manabox" and h.oracle_id:
+            counted.append((h.oracle_id, h))
+    total = sum(h.quantity for _, h in counted)
+    unique = len({oid for oid, _ in counted})
     valued = []
-    for h in counted:
+    for oid, h in counted:
         usd = catalog.printing_usd(h.scryfall_id) if h.scryfall_id else None
         if usd is None:
-            usd = catalog.prices(h.oracle_id).usd
+            usd = catalog.prices(oid).usd
         valued.append((usd or 0) * h.quantity)
     top = sorted(zip(valued, counted, strict=True), key=lambda x: -x[0])[:15]
     lines = [
@@ -109,7 +112,7 @@ def collection_summary(holdings: list[Holding], catalog: Catalog, today: str) ->
         "",
     ]
     lines += ["## Most valuable", "", "| Card | Copies | Value |", "|---|---|---|"]
-    lines += [f"| [[{catalog.name(h.oracle_id)}]] | {h.quantity} | {_money(v)} |" for v, h in top]
+    lines += [f"| [[{catalog.name(oid)}]] | {h.quantity} | {_money(v)} |" for v, (oid, h) in top]
     return "\n".join(lines) + "\n"
 
 
@@ -140,7 +143,7 @@ def append_version(log_dir: Path, deck: Deck, catalog: Catalog, today: str) -> b
     legacy = log_dir / f"{deck.slug}.versions.md"
     if legacy.exists() and not (log_dir / f"{deck.slug}-versions.md").exists():
         legacy.rename(log_dir / f"{deck.slug}-versions.md")
-    cards = Counter()
+    cards: Counter[str] = Counter()
     for e in deck.entries:
         cards[catalog.name(e.oracle_id) if e.oracle_id else e.name] += e.quantity
     digest = hashlib.sha256(json.dumps(sorted(cards.items())).encode()).hexdigest()[:16]
