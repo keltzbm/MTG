@@ -14,6 +14,8 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 
 ### Changed
 - `tests/test_sync.py` formatted with `ruff format`; the whole repo now passes the format check.
+- Development Python pinned to 3.14 in `.python-version`: `uv run` and the CI lint job use it; the test
+  matrix still covers 3.12 through 3.14.
 - Type fixes found by mypy: code that uses a card's oracle id now receives it as a definite string instead
   of re-reading an optional field, and `mtg sync` no longer reuses one variable for the price archive and
   the sync result.
