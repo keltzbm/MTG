@@ -83,12 +83,36 @@ riffle schedule                    # times, next run, last result, log path
 riffle schedule remove
 ```
 
+## Database (Postgres)
+
+From v0.4.0 the data moves into Postgres, run locally in Docker (OrbStack on the
+Mac). One-time setup from the repo root: a random password for Compose in `.env`
+(gitignored) and for every libpq client in `~/.pgpass`, so no config holds it.
+
+```zsh
+pw=$(openssl rand -hex 24)
+print -r -- "POSTGRES_PASSWORD=$pw" > .env
+print -r -- "localhost:5432:*:tcg:$pw" >> ~/.pgpass
+chmod 600 ~/.pgpass
+unset pw
+```
+
+```bash
+riffle db up                    # start Postgres (compose.yaml) and wait until it's healthy
+riffle db upgrade               # apply pending migrations
+riffle db status                # server and schema revision; exits 1 if unreachable or behind
+```
+
+Tests marked `postgres` use a separate `tcg_test` database, recreated on every
+run; without a reachable server they skip.
+
 ## Where things live
 
 | What | Where |
 |---|---|
 | Config | `~/.config/riffle/config.toml` — vault path |
 | Card data, collection, sync state, MTGO events, price archive | `~/.local/share/riffle/` — outside the synced vault |
+| Database | Postgres 18 in Docker (`compose.yaml`, volume `tcg_pgdata`); `database_url` in config, password in `~/.pgpass` |
 | Output | `tcg/mtg/_generated/` and `tcg/mtg/_log/` in the vault — nothing else |
 
 ## Invariants

@@ -11,8 +11,19 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
   and the test suite on Linux and macOS with Python 3.12, 3.13, and 3.14 (the versions `requires-python`
   allows).
 - `mypy src` runs in CI; the code type-checks clean.
+- Postgres: `riffle db up` starts a local Postgres 18 with Docker Compose (`compose.yaml`) and waits until
+  it's healthy; `riffle db upgrade` applies migrations; `riffle db status` shows the server and schema
+  revision and exits 1 if the database is unreachable or behind. Migrations (Alembic) ship inside the
+  package. The first one creates `games` with Magic, Flesh and Blood, and One Piece.
+- `database_url` config key, default `postgresql+psycopg://tcg@localhost:5432/tcg`. The password comes
+  from `~/.pgpass`, never from config; `riffle init` shows the URL.
+- Database tests against a separate `tcg_test` database, recreated each run, each test rolled back. They
+  skip when no Postgres is reachable; CI's Linux jobs run them against a `postgres:18` service.
+- Dependencies: SQLAlchemy, psycopg (with its bundled libpq), Alembic.
 
 ### Changed
+- CI's test job is split in two: Linux with a Postgres service, macOS without (its runners have no Docker).
+- `.env`, which holds the local database password for Compose, is ignored by git.
 - **Breaking:** the project is now Riffle (github.com/keltzbm/riffle). The package and command are
   `riffle` instead of `mtg`, config lives in `~/.config/riffle/`, data in `~/.local/share/riffle/`, and the
   launchd job's label is `com.keltzbm.riffle-sync`. Nothing is migrated automatically: move the old

@@ -42,6 +42,7 @@ def init() -> None:
     typer.echo(f"config     {path}")
     typer.echo(f"vault      {cfg.vault}")
     typer.echo(f"data       {config.data_dir()}")
+    typer.echo(f"database   {cfg.database_url}")
     for key, why in (cfg.obsolete or {}).items():
         typer.echo(f"  ! `{key}` in config is ignored: {why}", err=True)
 
@@ -577,6 +578,86 @@ def schedule_remove() -> None:
     from riffle import schedule as sched
 
     typer.echo(f"removed {sched.LABEL}" if sched.remove() else "no schedule to remove")
+
+
+db_app = typer.Typer(help="The Postgres database: start it, migrate it, check it.", no_args_is_help=True)
+app.add_typer(db_app, name="db")
+
+
+def _db_engine():
+    from riffle import db
+
+    return db.engine()
+
+
+def _unreachable(url: str, e: Exception) -> typer.Exit:
+    from riffle import db
+
+    reason = str(getattr(e, "orig", e)).strip().splitlines()[0]
+    typer.echo(f"can't reach Postgres at {db.display(url)}: {reason}", err=True)
+    typer.echo("start it with: riffle db up", err=True)
+    return typer.Exit(1)
+
+
+@db_app.command("up")
+def db_up() -> None:
+    """Start the local Postgres (Docker Compose) and wait until it's healthy."""
+    from riffle.db import compose
+
+    try:
+        code = compose.up()
+    except FileNotFoundError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    raise typer.Exit(code)
+
+
+@db_app.command("upgrade")
+def db_upgrade() -> None:
+    """Apply every migration the database doesn't have yet."""
+    from sqlalchemy.exc import OperationalError
+
+    from riffle.db import migrate
+
+    eng = _db_engine()
+    try:
+        before = migrate.current(eng)
+        migrate.upgrade(eng)
+        after = migrate.current(eng)
+    except OperationalError as e:
+        raise _unreachable(eng.url.render_as_string(hide_password=False), e) from e
+    if before == after:
+        typer.echo(f"schema     {after} (head), nothing to apply")
+    else:
+        typer.echo(f"schema     {before or 'empty'} → {after} (head)")
+
+
+@db_app.command("status")
+def db_status() -> None:
+    """Server, schema revision, and whether migrations are pending. Exits 1 unless reachable and current."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+
+    from riffle import db
+    from riffle.db import migrate
+
+    eng = _db_engine()
+    url = eng.url.render_as_string(hide_password=False)
+    typer.echo(f"database   {db.display(url)}")
+    try:
+        with eng.connect() as conn:
+            version = conn.execute(text("SHOW server_version")).scalar_one()
+        current = migrate.current(eng)
+    except OperationalError as e:
+        raise _unreachable(url, e) from e
+    head = migrate.head()
+    typer.echo(f"server     PostgreSQL {str(version).split()[0]}")
+    if current == head:
+        typer.echo(f"schema     {current} (head)")
+        return
+    have = f"{current}, head is {head}" if current else f"empty, head is {head}"
+    typer.echo(f"schema     {have} — run: riffle db upgrade")
+    raise typer.Exit(1)
 
 
 if __name__ == "__main__":
