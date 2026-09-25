@@ -142,3 +142,15 @@ gh codespace stop                                   # stops by itself when idle,
 - `oracle_id` is the key. Names are resolved once, at the edge; unmatched names are reported, never dropped.
 - Colors are WUBRG order everywhere.
 - The vault is a render target. Authored notes are read, never written.
+
+## License
+
+Copyright (C) 2022–2026 Brandon M. Keltz
+
+Riffle's code is free software under the [GNU Affero General Public License v3.0](LICENSE) or any
+later version. Anyone may use, study, change, and share it. Whoever shares a changed version, or runs
+one as a service that other people use over a network, must offer those people its source under the
+same license.
+
+Card data, prices, and images come from their publishers and from the sources Riffle reads, under
+those sources' own terms; this license doesn't cover them.
