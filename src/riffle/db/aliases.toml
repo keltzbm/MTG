@@ -1,0 +1,12 @@
+# Upstream ID renames, applied before an ID is derived (see riffle/db/ids.py).
+#
+# When a creating source gives an existing card, printing, or set a new ID, add
+# the new ID under its source, pointing at the ID the row was first derived
+# from, so the row keeps its Riffle ID:
+#
+#   [scryfall_oracle]
+#   "<new oracle id>" = "<oracle id the card was first derived from>"
+#
+# Sources: scryfall_oracle (Magic cards), scryfall (printings), scryfall_set (sets).
+# Point every alias at the first ID, never at another alias. The next load moves
+# the renamed ID's rows back to the original and retires the row derived from it.

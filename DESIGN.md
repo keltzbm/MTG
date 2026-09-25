@@ -25,6 +25,8 @@ Both are the same bug: **name is not a key.**
 | Scryfall bulk JSON, not scraping (MTGO decklists are the one scrape — no API exists) | Daily, authoritative, includes legalities and prices — **paper USD and MTGO tix** (Scryfall sources tix from Cardhoarder). |
 | Price history is our own daily snapshot, stored raw | tcgcsv took its bulk archive down in September 2026, so history can't be backfilled. Each day Riffle fetches every set's price file for the games it covers (one file at a time, once a day, as tcgcsv asks) and keeps Scryfall's prices for Magic. Files are stored as returned so any later loader can re-read them. |
 | Postgres for the system of record (v0.4.0) | Constraints, transactions, and many writers; the catalog and events move there patch by patch. Migrations (Alembic) ship inside the package, and a test checks they build exactly what the ORM models define. |
+| Riffle's own IDs, derived from the source's | Cards, printings, and sets get a UUIDv5 of a fixed namespace and the creating source's ID (`db/ids.py`): the same on every machine, so the catalog can be rebuilt from its sources. One source per game creates rows (Scryfall for Magic); others only map their IDs onto them in `external_ids`. |
+| Loads stage, then merge | COPY into temporary tables, ANALYZE them, then one join-filtered upsert per table (`db/catalog.py`): only new and changed rows are written, so a repeat load writes nothing. Rows the source stops listing are retired, never deleted. |
 | DuckDB for card data only | Loads the ~500 MB bulk file directly. The collection is re-read from the ManaBox CSV each run — 2,500 rows don't need a database. |
 | Dataclasses, stdlib where possible | Validation happens at ingest; runtime deps are just `typer` and `duckdb`. |
 | WUBRG color ordering | The old `sorted()` produced `BGU`; every external source says `UBG`. |
@@ -73,9 +75,10 @@ src/riffle/
 ├── vault.py        read deck notes, frontmatter, buy lines — read-only
 ├── sync.py         the work behind `riffle sync`, CLI- and DB-free
 ├── models/         Printing, Prices, Deck, DeckEntry, Holding
-├── ingest/         scryfall, manabox, decklist, arena, mtgo, tcgcsv
+├── ingest/         scryfall, scryfall_catalog (bulk file → Postgres), manabox, decklist, arena, mtgo, tcgcsv
 ├── store/          Catalog protocol + DuckDB implementation
-├── db/             Postgres: engine, ORM models, migrations, `db up`
+├── db/             Postgres: engine, ORM models, migrations, `db up`, ids (derived IDs, aliases.toml),
+│                   catalog (the stage-and-merge loader any game's source uses)
 ├── analysis/       resolve, ownership, pricing, colors, legality, metagame
 ├── export/         formats (moxfield/manabox/mtgo/tcgplayer), obsidian
 └── cli.py          typer app — the only entry point
