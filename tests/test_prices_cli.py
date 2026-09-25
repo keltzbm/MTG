@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 
 from riffle import net
 from riffle.cli import app
-from riffle.ingest import scryfall, tcgcsv
+from riffle.ingest import scryfall, scryfall_catalog, tcgcsv
 
 
 def fake_snapshot(fetched: dict[str, int], failed: dict[str, str] | None = None):
@@ -63,11 +63,22 @@ def test_a_game_that_failed_is_named(monkeypatch):
     assert "! tcgcsv fab: HTTP 503" in result.output
 
 
+def test_ingest_scryfall_loads_the_postgres_catalog_after_the_download(monkeypatch):
+    calls = []
+    monkeypatch.setattr(scryfall, "refresh", lambda force, tracker: calls.append(("refresh", force)))
+    monkeypatch.setattr(scryfall_catalog, "update", lambda tracker, force: calls.append(("postgres", force)))
+    monkeypatch.setattr(scryfall, "snapshot_prices", lambda: (Path("/d/2026-09-24.jsonl.gz"), False))
+    result = CliRunner().invoke(app, ["ingest", "scryfall", "--force", "--no-sync"])
+    assert result.exit_code == 0, result.output
+    assert calls == [("refresh", True), ("postgres", True)]
+
+
 def test_an_offline_resync_mentions_prices_only_when_it_kept_some(monkeypatch):
     kept = {"now": False}
     monkeypatch.setattr(
         scryfall, "refresh", lambda force, tracker: tracker.step("Scryfall bulk data").ok("current")
     )
+    monkeypatch.setattr(scryfall_catalog, "update", lambda tracker, force: None)
     monkeypatch.setattr(scryfall, "snapshot_prices", lambda: (Path("/d/2026-09-24.jsonl.gz"), kept["now"]))
     quiet = CliRunner().invoke(app, ["ingest", "scryfall", "--no-sync"])
     assert quiet.exit_code == 0, quiet.output

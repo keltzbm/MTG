@@ -150,6 +150,20 @@ def cat():
     return FakeCatalog()
 
 
+@pytest.fixture(autouse=True)
+def isolated(tmp_path_factory, monkeypatch):
+    """Every test gets its own config and data directories, and a configured database no
+    one can reach, so nothing a test runs touches real files or the real database. Tests
+    that need their own set XDG_* again; database tests use the pg fixtures below."""
+    home = tmp_path_factory.mktemp("xdg")
+    (home / "config" / "riffle").mkdir(parents=True)
+    (home / "config" / "riffle" / "config.toml").write_text(
+        'database_url = "postgresql+psycopg://tcg@127.0.0.1:1/unreachable"\n'
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / "config"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(home / "data"))
+
+
 # ---- progress -----------------------------------------------------------------------
 
 

@@ -108,8 +108,25 @@ riffle db upgrade               # apply pending migrations
 riffle db status                # server and schema revision; exits 1 if unreachable or behind
 ```
 
+`riffle ingest scryfall` and `riffle sync` also load the Scryfall download into
+the Postgres catalog (the "Postgres catalog" step): about 40 seconds the first
+time, a skip while the database holds that file already, and about 20 seconds
+for each new daily file, which mostly moves `last_seen` on the ID registry.
+Commands still read the DuckDB catalog while the move is under way, so when
+Postgres is down or behind, the step says why and the sync carries on.
+
+```bash
+riffle ingest scryfall --force --no-sync    # reload the catalog even if Postgres holds the file
+```
+
+Every card, printing, and set gets Riffle's own ID, a UUIDv5 derived from its
+Scryfall ID, so a rebuild from the same files gives the same IDs anywhere.
+Scryfall rarely renames an ID; `src/riffle/db/aliases.toml` maps a renamed one
+back to the ID it started from.
+
 Tests marked `postgres` use a separate `tcg_test` database, recreated on every
-run; without a reachable server they skip.
+run; without a reachable server they skip. Every test runs with its own config
+and data folders and an unreachable database URL, so none can touch real data.
 
 Every `uv run pytest` also measures line and branch coverage and lists the files
 with untested code. CI fails a run below 75%; `--no-cov` skips the measurement.
@@ -139,7 +156,8 @@ gh codespace stop                                   # stops by itself when idle,
 
 ## Invariants
 
-- `oracle_id` is the key. Names are resolved once, at the edge; unmatched names are reported, never dropped.
+- Cards are keyed by `oracle_id` (Riffle's own IDs, derived from Scryfall's, in Postgres). Names are resolved
+  once, at the edge; unmatched names are reported, never dropped.
 - Colors are WUBRG order everywhere.
 - The vault is a render target. Authored notes are read, never written.
 

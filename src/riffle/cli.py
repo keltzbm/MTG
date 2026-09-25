@@ -47,16 +47,22 @@ def init() -> None:
         typer.echo(f"  ! `{key}` in config is ignored: {why}", err=True)
 
 
+def _refresh(tracker: Tracker, force: bool = False) -> None:
+    """Scryfall's bulk file and set list, loaded into the DuckDB catalog and the Postgres one."""
+    from riffle.ingest import scryfall, scryfall_catalog
+
+    scryfall.refresh(force=force, tracker=tracker)
+    scryfall_catalog.update(tracker=tracker, force=force)
+
+
 @ingest_app.command("scryfall")
 def ingest_scryfall(
-    force: bool = typer.Option(False, help="Download even if under a day old"),
+    force: bool = typer.Option(False, help="Download and load even if under a day old"),
     no_sync: bool = typer.Option(False, "--no-sync", help="Don't resync the vault afterwards"),
 ) -> None:
-    """Download Scryfall's bulk card data and load it."""
-    from riffle.ingest import scryfall
-
+    """Download Scryfall's bulk card data and set list, and load them."""
     with open_tracker("riffle ingest scryfall") as tracker:
-        scryfall.refresh(force=force, tracker=tracker)
+        _refresh(tracker, force=force)
         if no_sync:
             _snapshot_prices(tracker, online=False)
         else:
@@ -414,9 +420,7 @@ def _run_sync(tracker: Tracker, offline: bool = True) -> None:
 
     cfg0 = config.load()
     if not offline:
-        from riffle.ingest import scryfall
-
-        scryfall.refresh(tracker=tracker)
+        _refresh(tracker)
     _snapshot_prices(tracker, online=not offline)
     newest = manabox.newest_export(cfg0.downloads)
     stored = cfg0.collection_csv
@@ -567,8 +571,7 @@ def _db_engine():
 def _unreachable(url: str, e: Exception) -> typer.Exit:
     from riffle import db
 
-    reason = str(getattr(e, "orig", e)).strip().splitlines()[0]
-    typer.echo(f"can't reach Postgres at {db.display(url)}: {reason}", err=True)
+    typer.echo(f"can't reach Postgres at {db.display(url)}: {db.reason(e)}", err=True)
     typer.echo("start it with: riffle db up", err=True)
     return typer.Exit(1)
 

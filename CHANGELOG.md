@@ -7,6 +7,17 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 ## [Unreleased]
 
 ### Added
+- The Magic catalog in Postgres. `riffle ingest scryfall` and `riffle sync` load Scryfall's bulk file into
+  new tables (migration `0002`): formats, sets, cards, printings, legalities, Magic's own card and printing
+  columns, and `external_ids`, the registry mapping Scryfall's, MTGO's, and Arena's IDs to Riffle's. Riffle's
+  IDs are derived from Scryfall's (UUIDv5), so every machine gets the same ones. A load writes only rows that
+  changed, marks what Scryfall stops listing as retired instead of deleting it, and is skipped when Postgres
+  holds the downloaded file already; `--force` loads it anyway. Commands still read the DuckDB catalog, so
+  when Postgres is down or its schema is behind, the step says so and the sync carries on.
+- Scryfall's set list (parent sets and release dates, which card data lacks) is downloaded after each new bulk
+  file, or when missing, into `~/.local/share/riffle/scryfall/sets.json`. A failed download is reported and
+  never stops a sync.
+- `src/riffle/db/aliases.toml`, for the rare Scryfall ID rename, so a renamed card keeps its Riffle ID.
 - License: the GNU Affero General Public License v3.0 or later (`LICENSE`), declared in the package
   metadata too. Card data and images stay under their sources' terms.
 - Test coverage: every `uv run pytest` measures line and branch coverage (pytest-cov) and lists the files with
@@ -39,6 +50,9 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
   `riffle sync --offline` still keeps the Scryfall prices, which need no request.
 
 ### Changed
+- `riffle ingest scryfall --force` reloads the Postgres catalog as well as downloading.
+- Tests run with their own config and data folders and a database URL nothing listens on, so no test can
+  touch real files or the real database.
 - Long-running commands (`sync`, `ingest scryfall`, `ingest prices`, `ingest mtgo`) show their steps as they
   happen. On a terminal, a running step has a spinner, a bar with its count (or bytes and speed), and the
   time so far; a finished one becomes a line with a green ✔ (red ✘ if it failed), its result, and how long it

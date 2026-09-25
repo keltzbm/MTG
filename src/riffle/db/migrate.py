@@ -36,10 +36,14 @@ def head() -> str:
     return heads[0]
 
 
+def revision(conn: Connection) -> str | None:
+    """The revision of the database conn is on, or None before the first migration."""
+    return MigrationContext.configure(conn).get_current_revision()
+
+
 def current(engine: Engine) -> str | None:
-    """The database's revision, or None before the first migration."""
     with engine.connect() as conn:
-        return MigrationContext.configure(conn).get_current_revision()
+        return revision(conn)
 
 
 def upgrade(engine: Engine, revision: str = "head") -> None:

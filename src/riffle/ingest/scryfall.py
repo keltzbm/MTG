@@ -1,10 +1,13 @@
-"""Scryfall bulk data: download the default-cards file, load it into DuckDB,
-and keep each day's prices.
+"""Scryfall bulk data: download the default-cards file and the set list, load
+the cards into DuckDB, and keep each day's prices.
 
 Published daily; carries oracle ids, legalities, and prices — including
 MTGO tix (Scryfall sources those from Cardhoarder). One API request for the
 index, then one file from *.scryfall.io, which has no rate limit — at most
-once a day, since prices only change daily. Headers and 429 handling: riffle.net.
+once a day, since prices only change daily — and then one more API request for
+the set list (<data_dir>/scryfall/sets.json: parent sets and release dates,
+which card objects lack). Headers and 429 handling: riffle.net. The Postgres
+catalog is loaded from these files by riffle.ingest.scryfall_catalog.
 
 Since 2026-07-20 bulk files are gzipped JSON Lines only, linked from
 `jsonl_download_uri`. The old `download_uri` (one big JSON array) is gone;
@@ -18,6 +21,7 @@ them (strings, in USD, EUR, and MTGO tix), where <day> is the bulk file's date.
 
 import gzip
 import json
+import time
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -30,6 +34,8 @@ from riffle.progress import SILENT, Tracker
 from riffle.store.db import connect, db_path
 
 BULK_INDEX = "https://api.scryfall.com/bulk-data"
+SETS = "https://api.scryfall.com/sets"
+API_PAUSE = 0.1  # seconds between api.scryfall.com requests, as Scryfall asks: between set list pages
 
 COLUMNS = {
     "id": "VARCHAR",
@@ -59,6 +65,39 @@ COLUMNS = {
 
 def meta_path() -> Path:
     return data_dir() / "bulk-meta.json"
+
+
+def sets_path() -> Path:
+    return data_dir() / "scryfall" / "sets.json"
+
+
+def fetch_sets(dest: Path | None = None) -> Path:
+    """Scryfall's set list, every page of it, saved as one list object."""
+    dest = dest or sets_path()
+    found: list[dict] = []
+    url: str | None = SETS
+    while url:
+        body = net.get(url, accept="application/json")
+        if body is None:
+            raise RuntimeError(f"Scryfall's set list is missing ({url})")
+        page = json.loads(body)
+        if not isinstance(page.get("data"), list):
+            raise RuntimeError("Scryfall's set list isn't the expected JSON")
+        found += page["data"]
+        url = page.get("next_page") if page.get("has_more") else None
+        if url:
+            time.sleep(API_PAUSE)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+    tmp.write_text(json.dumps({"object": "list", "has_more": False, "data": found}), encoding="utf-8")
+    tmp.replace(dest)
+    return dest
+
+
+def read_sets(path: Path | None = None) -> list[dict]:
+    """The saved set list; empty if there's none yet."""
+    path = path or sets_path()
+    return json.loads(path.read_text(encoding="utf-8"))["data"] if path.exists() else []
 
 
 def remote_info(kind: str = "default_cards") -> dict:
@@ -167,10 +206,12 @@ def _create(con: duckdb.DuckDBPyConnection, source: str) -> None:
 
 
 def refresh(force: bool = False, max_age_hours: float = 24, tracker: Tracker = SILENT) -> None:
-    """Download the bulk file and load it, unless the loaded one is recent. Failures are
-    reported to the tracker, then raised."""
+    """Download the bulk file and load it, unless the loaded one is recent; then the set list.
+    Bulk file failures are reported to the tracker, then raised."""
     if not force and not is_stale(max_age_hours):
         tracker.step("Scryfall bulk data").ok("current")
+        if not sets_path().exists():
+            refresh_sets(tracker)
         return
     step = tracker.step("Scryfall bulk data", unit="bytes")
     try:
@@ -189,6 +230,19 @@ def refresh(force: bool = False, max_age_hours: float = 24, tracker: Tracker = S
     meta = {"updated_at": info.get("updated_at"), "loaded_at": datetime.now(UTC).isoformat(), "rows": rows}
     meta_path().write_text(json.dumps(meta))
     step.ok(f"{rows:,} printings")
+    refresh_sets(tracker)
+
+
+def refresh_sets(tracker: Tracker = SILENT) -> None:
+    """Fetch the set list. Only the Postgres catalog uses it, and builds any set it lacks from
+    what cards say, so a failure is reported, never raised: it can't stop a sync."""
+    step = tracker.step("Scryfall set list")
+    try:
+        sets = read_sets(fetch_sets())
+    except Exception as e:
+        step.fail(str(e))
+        return
+    step.ok(f"{len(sets):,} sets")
 
 
 def prices_dir() -> Path:
@@ -202,7 +256,8 @@ def bulk_file(dest_dir: Path | None = None) -> Path | None:
     return max(files, key=lambda p: p.stat().st_mtime) if files else None
 
 
-def _cards(bulk: Path) -> Iterator[dict]:
+def cards(bulk: Path) -> Iterator[dict]:
+    """Every card object in a bulk file, JSON Lines (gzipped or not) or the old JSON array."""
     if ".jsonl" in bulk.name:
         opener = gzip.open if bulk.name.endswith(".gz") else open
         with opener(bulk, "rt", encoding="utf-8") as f:
@@ -214,13 +269,27 @@ def _cards(bulk: Path) -> Iterator[dict]:
             yield from json.load(f)
 
 
-def bulk_day(bulk: Path) -> date:
-    """The day the bulk file's prices are for: Scryfall's updated_at, else the file's own date."""
+def bulk_rows() -> int | None:
+    """Card objects in the bulk file, as counted when it was last loaded into DuckDB."""
+    if not meta_path().exists():
+        return None
+    rows = json.loads(meta_path().read_text()).get("rows")
+    return rows if isinstance(rows, int) else None
+
+
+def bulk_updated_at(bulk: Path) -> datetime:
+    """When Scryfall published the bulk file: its updated_at, else the file's own time."""
     if meta_path().exists():
         stamp = json.loads(meta_path().read_text()).get("updated_at")
         if stamp:
-            return datetime.fromisoformat(stamp).date()
-    return datetime.fromtimestamp(bulk.stat().st_mtime, UTC).date()
+            published = datetime.fromisoformat(stamp)
+            return published if published.tzinfo else published.replace(tzinfo=UTC)
+    return datetime.fromtimestamp(bulk.stat().st_mtime, UTC)
+
+
+def bulk_day(bulk: Path) -> date:
+    """The day the bulk file's prices are for."""
+    return bulk_updated_at(bulk).date()
 
 
 def snapshot_prices(bulk: Path | None = None) -> tuple[Path, bool]:
@@ -235,7 +304,7 @@ def snapshot_prices(bulk: Path | None = None) -> tuple[Path, bool]:
     tmp = dest.with_name(dest.name + ".part")
     try:
         with gzip.open(tmp, "wt", encoding="utf-8") as out:
-            for card in _cards(bulk):
+            for card in cards(bulk):
                 line = json.dumps({"id": card["id"], "prices": card.get("prices")}, separators=(",", ":"))
                 out.write(line + "\n")
     except BaseException:
