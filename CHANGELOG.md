@@ -7,6 +7,8 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 ## [Unreleased]
 
 ### Added
+- Test coverage: every `uv run pytest` measures line and branch coverage (pytest-cov) and lists the files with
+  untested code. CI fails a run below 75%, a floor to raise as coverage grows.
 - Daily price snapshots, Riffle's own price history: `riffle ingest prices` (and `riffle sync`) fetch every
   set's TCGplayer price file from tcgcsv.com for Magic, Flesh and Blood, and One Piece, one file at a time and
   once per day, into `~/.local/share/riffle/tcgcsv/daily/<day>/<game>/`, and keep each Magic printing's
