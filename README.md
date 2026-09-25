@@ -106,6 +106,20 @@ riffle db status                # server and schema revision; exits 1 if unreach
 Tests marked `postgres` use a separate `tcg_test` database, recreated on every
 run; without a reachable server they skip.
 
+## GitHub Codespaces
+
+For working away from home without a local database: `.devcontainer/` sets up a
+codespace with Docker, uv, and SSH. Creating one installs the project and a
+database password; every start brings Postgres up and migrates it, so the
+database tests run there too. The data is throwaway, like any codespace.
+
+```bash
+gh auth refresh -h github.com -s codespace          # once: let gh manage codespaces
+gh codespace create -R keltzbm/riffle -b main -m basicLinux32gb
+gh codespace ssh                                    # the repo is /workspaces/riffle
+gh codespace stop                                   # stops by itself when idle, too
+```
+
 ## Where things live
 
 | What | Where |

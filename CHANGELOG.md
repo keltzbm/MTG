@@ -20,6 +20,9 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 - Database tests against a separate `tcg_test` database, recreated each run, each test rolled back. They
   skip when no Postgres is reachable; CI's Linux jobs run them against a `postgres:18` service.
 - Dependencies: SQLAlchemy, psycopg (with its bundled libpq), Alembic.
+- A dev container for GitHub Codespaces (`.devcontainer/`): Docker, uv, the GitHub CLI, and an SSH server
+  for `gh codespace ssh`. Creating a codespace installs the project and a database password; every start
+  brings Postgres up and migrates it, so the database tests run there instead of skipping.
 
 ### Changed
 - CI's test job is split in two: Linux with a Postgres service, macOS without (its runners have no Docker).
