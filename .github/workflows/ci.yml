@@ -70,3 +70,20 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --locked
       - run: uv run pytest
+
+  # The one check main requires. It runs even when a job above failed (a job
+  # skipped because its needs failed would count as passing), and succeeds only
+  # if every job succeeded, so pull requests merge themselves (gh pr merge
+  # --auto) once CI is green and never before. Jobs added above go in needs.
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [lint, test-linux, test-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for r in $RESULTS; do [ "$r" = success ] || exit 1; done
