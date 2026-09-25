@@ -7,6 +7,11 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 ## [Unreleased]
 
 ### Added
+- Daily price snapshots, Riffle's own price history: `riffle ingest prices` (and `riffle sync`) fetch every
+  set's TCGplayer price file from tcgcsv.com for Magic, Flesh and Blood, and One Piece, one file at a time and
+  once per day, into `~/.local/share/riffle/tcgcsv/daily/<day>/<game>/`, and keep each Magic printing's
+  Scryfall prices from the bulk file already downloaded, in `scryfall/daily/<day>.jsonl.gz`. Files are stored
+  as the sources returned them. Game category IDs are looked up on tcgcsv by name, never hard-coded.
 - CI on GitHub Actions for every push to `main` and every pull request: `ruff check`, `ruff format --check`,
   and the test suite on Linux and macOS with Python 3.12, 3.13, and 3.14 (the versions `requires-python`
   allows).
@@ -23,6 +28,11 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 - A dev container for GitHub Codespaces (`.devcontainer/`): Docker, uv, the GitHub CLI, and an SSH server
   for `gh codespace ssh`. Creating a codespace installs the project and a database password; every start
   brings Postgres up and migrates it, so the database tests run there instead of skipping.
+
+### Removed
+- **Breaking:** `riffle ingest tcgcsv` and the daily price-archive download. tcgcsv.com took the archive down
+  (September 2026) and asks clients to fetch price files individually instead; the snapshots above replace it.
+  `riffle sync --offline` still keeps the Scryfall prices, which need no request.
 
 ### Changed
 - CI's test job is split in two: Linux with a Postgres service, macOS without (its runners have no Docker).

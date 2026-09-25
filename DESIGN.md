@@ -23,7 +23,7 @@ Both are the same bug: **name is not a key.**
 |---|---|
 | Key everything by Scryfall `oracle_id` | Names collide and differ across printings. Resolve once, at the edge. |
 | Scryfall bulk JSON, not scraping (MTGO decklists are the one scrape — no API exists) | Daily, authoritative, includes legalities and prices — **paper USD and MTGO tix** (Scryfall sources tix from Cardhoarder). |
-| tcgcsv daily archives for price history, stored raw | One request per day covers every game's TCGplayer prices, back to 2024-02-08. Kept compressed and untouched so any later loader can re-read them. |
+| Price history is our own daily snapshot, stored raw | tcgcsv took its bulk archive down in September 2026, so history can't be backfilled. Each day Riffle fetches every set's price file for the games it covers (one file at a time, once a day, as tcgcsv asks) and keeps Scryfall's prices for Magic. Files are stored as returned so any later loader can re-read them. |
 | Postgres for the system of record (v0.4.0) | Constraints, transactions, and many writers; the catalog and events move there patch by patch. Migrations (Alembic) ship inside the package, and a test checks they build exactly what the ORM models define. |
 | DuckDB for card data only | Loads the ~500 MB bulk file directly. The collection is re-read from the ManaBox CSV each run — 2,500 rows don't need a database. |
 | Dataclasses, stdlib where possible | Validation happens at ingest; runtime deps are just `typer` and `duckdb`. |
