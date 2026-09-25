@@ -1,134 +1,212 @@
-"""TCGplayer price history from tcgcsv.com's daily archive — every game at once.
+"""Daily TCGplayer prices from tcgcsv.com, one snapshot per day per game.
 
-tcgcsv mirrors TCGplayer's catalog and prices nightly and keeps one archive
-per day, back to 2024-02-08:
+tcgcsv mirrors TCGplayer's catalog and prices once a day and serves them as
+plain JSON, no key needed:
 
-    https://tcgcsv.com/archive/tcgplayer/prices-2026-09-21.ppmd.7z
+    https://tcgcsv.com/last-updated.txt                     when today's data was published
+    https://tcgcsv.com/tcgplayer/categories                 every game, with its categoryId
+    https://tcgcsv.com/tcgplayer/{categoryId}/groups        a game's sets ("groups")
+    https://tcgcsv.com/tcgplayer/{categoryId}/{groupId}/prices
 
-One file holds that day's prices for every category (Magic, Flesh and Blood,
-One Piece, ...), laid out inside as <date>/<categoryId>/<groupId>/prices.
-So a day of history for every game is one request, not a walk over
-thousands of groups.
+It used to publish a daily archive of every price file at once. That was taken
+down in September 2026 (server costs; the maintainer is waiting on TCGplayer
+for terms), with the request that clients fetch the price files one at a time
+and never the same file twice in a day. So Riffle keeps its own history: once
+a day, for each game it covers, it fetches every group's price file and stores
+the responses as returned, in
 
-Files are stored exactly as downloaded, still compressed, in
-<data_dir>/tcgcsv/archive/. Nothing here opens them: loading into a database
-is a later step, and it will need 7-Zip for the PPMd compression.
+    <data_dir>/tcgcsv/daily/<day>/<game>/groups.json        the groups response
+    <data_dir>/tcgcsv/daily/<day>/<game>/prices.jsonl.gz    one line per group:
+                                                            {"groupId": ..., "response": <the price file>}
 
-A day that isn't published yet answers 404; it's reported as pending and
-tried again next run. tcgcsv asks for a pause between requests (their FAQ
-and docs); headers, retries and streaming live in riffle.net.
+<day> is the date from last-updated.txt, so a day is fetched once however
+often sync runs. Games are named by their tcgcsv category and resolved to IDs
+at run time. Nothing here reads the files back: the price loader (v0.4.0)
+does. Headers, retries, and 429 handling: riffle.net.
 """
 
+import gzip
+import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date, timedelta
-from functools import partial
+from datetime import date, datetime
 from pathlib import Path
 
 from riffle import net
 from riffle.config import data_dir
 
 BASE = "https://tcgcsv.com"
-FIRST_DAY = date(2024, 2, 8)
-SEVEN_ZIP_MAGIC = b"7z\xbc\xaf\x27\x1c"
+# Game code -> the game's category name on tcgcsv; IDs are looked up at run time.
+GAMES = {"mtg": "Magic", "fab": "Flesh & Blood TCG", "op": "One Piece Card Game"}
 
-Download = Callable[[str, Path, net.Progress | None], int | None]
-Meter = Callable[[date, int, int | None], None]  # (day, bytes so far, total if known)
-
-
-def store_dir() -> Path:
-    return data_dir() / "tcgcsv" / "archive"
-
-
-def archive_name(day: date) -> str:
-    return f"prices-{day.isoformat()}.ppmd.7z"
-
-
-def archive_url(day: date) -> str:
-    return f"{BASE}/archive/tcgplayer/{archive_name(day)}"
-
-
-def archive_path(day: date) -> Path:
-    return store_dir() / archive_name(day)
-
-
-def stored_days() -> list[date]:
-    """Days already on disk, oldest first."""
-    folder = store_dir()
-    days = []
-    for p in folder.glob("prices-*.ppmd.7z") if folder.exists() else []:
-        try:
-            days.append(date.fromisoformat(p.name.removeprefix("prices-").removesuffix(".ppmd.7z")))
-        except ValueError:
-            continue
-    return sorted(days)
-
-
-def stored_bytes() -> int:
-    folder = store_dir()
-    return sum(p.stat().st_size for p in folder.glob("prices-*.ppmd.7z")) if folder.exists() else 0
-
-
-def _days(since: date, until: date) -> list[date]:
-    since = max(since, FIRST_DAY)
-    return [since + timedelta(days=i) for i in range((until - since).days + 1)]
+Fetch = Callable[[str], bytes | None]  # url -> body, or None for 404
+Progress = Callable[[str, int, int], None]  # (game, groups done, groups total)
 
 
 @dataclass
-class ArchiveResult:
-    fetched: list[date] = field(default_factory=list)
-    skipped: int = 0  # already stored
-    pending: list[date] = field(default_factory=list)  # not published yet (404)
-    failed: list[tuple[date, str]] = field(default_factory=list)
+class Snapshot:
+    day: date
+    fetched: list[str] = field(default_factory=list)  # games stored this run
+    skipped: list[str] = field(default_factory=list)  # games already stored for the day
+    failed: list[tuple[str, str]] = field(default_factory=list)  # (game, why)
+    groups: dict[str, int] = field(default_factory=dict)  # game -> price files fetched
+    requests: int = 0
 
 
-def _is_7z(path: Path) -> bool:
-    with path.open("rb") as f:
-        return f.read(len(SEVEN_ZIP_MAGIC)) == SEVEN_ZIP_MAGIC
+def _get(url: str) -> bytes | None:
+    return net.get(url, accept="application/json")
 
 
-def _download(url: str, dest: Path, progress: net.Progress | None) -> int | None:
-    return net.download(url, dest, progress=progress)
+def daily_dir() -> Path:
+    return data_dir() / "tcgcsv" / "daily"
 
 
-def ingest(
-    since: date,
-    until: date | None = None,
-    delay: float = 0.25,
-    download: Download = _download,
-    progress: Callable[[str], None] = lambda _: None,
-    meter: Meter | None = None,
-) -> ArchiveResult:
-    """Download every day's archive in [since, until] that isn't stored yet.
+def day_dir(day: date, game: str) -> Path:
+    return daily_dir() / day.isoformat() / game
 
-    progress gets one line per finished day; meter, if given, gets byte counts
-    while a file streams — for a live display on a terminal.
-    """
-    until = until or date.today()
-    have = set(stored_days())
-    res = ArchiveResult()
-    requested = 0
-    for day in _days(since, until):
-        if day in have:
-            res.skipped += 1
-            continue
-        if requested:
-            time.sleep(delay)
-        requested += 1
-        dest = archive_path(day)
+
+def stored_days(games: dict[str, str] = GAMES) -> list[date]:
+    """Days with a price file for every game, oldest first."""
+    if not daily_dir().exists():
+        return []
+    days = []
+    for entry in daily_dir().iterdir():
         try:
-            size = download(archive_url(day), dest, partial(meter, day) if meter else None)
-        except Exception as e:  # one bad day shouldn't stop a long backfill
-            res.failed.append((day, str(e)))
+            day = date.fromisoformat(entry.name)
+        except ValueError:
             continue
-        if size is None:
-            res.pending.append(day)
+        if all((entry / game / "prices.jsonl.gz").exists() for game in games):
+            days.append(day)
+    return sorted(days)
+
+
+def last_updated(fetch: Fetch = _get) -> datetime:
+    """When tcgcsv last refreshed its data, e.g. 2026-09-24T20:05:50+0000."""
+    body = fetch(f"{BASE}/last-updated.txt")
+    if body is None:
+        raise net.FetchError("HTTP 404")
+    text = body.decode().strip()
+    try:
+        return datetime.strptime(text, "%Y-%m-%dT%H:%M:%S%z")
+    except ValueError as e:
+        raise net.FetchError(f"unexpected last-updated.txt: {text[:40]!r}") from e
+
+
+def _parse(body: bytes, what: str) -> dict:
+    """The response as a dict with a "results" list, or a FetchError naming what came back instead."""
+    try:
+        doc = json.loads(body)
+        if not isinstance(doc, dict) or not isinstance(doc["results"], list):
+            raise KeyError("results")
+    except (ValueError, KeyError, TypeError) as e:
+        raise net.FetchError(f"{what}: not the expected JSON") from e
+    return doc
+
+
+def _results(body: bytes, what: str) -> list[dict]:
+    return _parse(body, what)["results"]
+
+
+def _one_line(body: bytes, what: str) -> str:
+    """The response verbatim if it's one line, else compacted: the file is one JSON object per line."""
+    doc = _parse(body, what)
+    text = body.decode("utf-8").strip()
+    return text if "\n" not in text and "\r" not in text else json.dumps(doc, separators=(",", ":"))
+
+
+def categories(fetch: Fetch = _get) -> list[dict]:
+    body = fetch(f"{BASE}/tcgplayer/categories")
+    if body is None:
+        raise net.FetchError("categories: HTTP 404")
+    return _results(body, "categories")
+
+
+def resolve(cats: list[dict], games: dict[str, str] = GAMES) -> dict[str, int]:
+    """Game code -> tcgcsv categoryId, matched by name (case-insensitive). Unknown games are left out."""
+    by_name = {str(c.get("name", "")).casefold(): int(c["categoryId"]) for c in cats if "categoryId" in c}
+    return {code: by_name[name.casefold()] for code, name in games.items() if name.casefold() in by_name}
+
+
+def _write(dest: Path, body: bytes) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+    tmp.write_bytes(body)
+    tmp.replace(dest)
+
+
+def _fetch_game(
+    game: str,
+    category: int,
+    target: Path,
+    fetch: Fetch,
+    delay: float,
+    progress: Progress | None,
+    snap: Snapshot,
+) -> None:
+    """Every price file of one game into target, all or nothing."""
+    groups_body = fetch(f"{BASE}/tcgplayer/{category}/groups")
+    snap.requests += 1
+    if groups_body is None:
+        raise net.FetchError("groups: HTTP 404")
+    group_ids = sorted(int(g["groupId"]) for g in _results(groups_body, "groups"))
+    _write(target.parent / "groups.json", groups_body)
+    tmp = target.with_name(target.name + ".part")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with gzip.open(tmp, "wt", encoding="utf-8") as out:
+            for n, gid in enumerate(group_ids, 1):
+                time.sleep(delay)
+                body = fetch(f"{BASE}/tcgplayer/{category}/{gid}/prices")
+                snap.requests += 1
+                if body is None:
+                    out.write(f'{{"groupId": {gid}, "response": null}}\n')
+                else:
+                    out.write(f'{{"groupId": {gid}, "response": {_one_line(body, f"group {gid}")}}}\n')
+                if progress:
+                    progress(game, n, len(group_ids))
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    tmp.replace(target)
+    snap.groups[game] = len(group_ids)
+
+
+def snapshot(
+    games: dict[str, str] = GAMES,
+    delay: float = 0.1,
+    fetch: Fetch = _get,
+    progress: Progress | None = None,
+) -> Snapshot:
+    """Store today's price files for every game that doesn't have them yet.
+
+    "Today" is tcgcsv's last-updated date. A game whose file exists is skipped
+    without a request; a game that fails part-way keeps nothing, so the next
+    run fetches it whole. delay is the pause before each request (tcgcsv asks
+    for ~100 ms).
+    """
+    stamp = last_updated(fetch)
+    snap = Snapshot(day=stamp.date())
+    snap.requests += 1
+    todo = {game: day_dir(snap.day, game) / "prices.jsonl.gz" for game in games}
+    for game, target in list(todo.items()):
+        if target.exists():
+            snap.skipped.append(game)
+            del todo[game]
+    if not todo:
+        return snap
+    ids = resolve(categories(fetch), games)
+    snap.requests += 1
+    stamp_file = daily_dir() / snap.day.isoformat() / "last-updated.txt"
+    _write(stamp_file, stamp.strftime("%Y-%m-%dT%H:%M:%S%z").encode())
+    for game, target in todo.items():
+        if game not in ids:
+            snap.failed.append((game, f"tcgcsv has no category named {games[game]!r}"))
             continue
-        if not _is_7z(dest):
-            dest.unlink()
-            res.failed.append((day, "not a 7z archive — tcgcsv's archive format may have changed"))
+        try:
+            _fetch_game(game, ids[game], target, fetch, delay, progress, snap)
+        except net.FetchError as e:
+            snap.failed.append((game, str(e)))
             continue
-        res.fetched.append(day)
-        progress(f"{day}  {size / 1e6:6.1f} MB")
-    return res
+        snap.fetched.append(game)
+    return snap

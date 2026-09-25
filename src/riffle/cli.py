@@ -8,7 +8,7 @@ from typing import Annotated
 
 import typer
 
-from riffle import config, vault
+from riffle import config, net, vault
 from riffle import sync as syncmod
 from riffle.export import formats
 
@@ -86,7 +86,9 @@ def ingest_scryfall(
 
     msg = scryfall.refresh(force=force, progress=_download_meter("Scryfall bulk data"))
     _say(msg)
-    if not no_sync:
+    if no_sync:
+        _snapshot_prices(online=False)
+    else:
         _run_sync(offline=True)
 
 
@@ -175,42 +177,43 @@ def ingest_mtgo(
         typer.echo(f"  ! {slug}: {err}", err=True)
 
 
-@ingest_app.command("tcgcsv")
-def ingest_tcgcsv(
-    days: int = typer.Option(7, help="How far back to look"),
-    since: str = typer.Option(None, help="Start date YYYY-MM-DD, overrides --days; the first is 2024-02-08"),
-    delay: float = typer.Option(0.25, help="Seconds between downloads"),
+@ingest_app.command("prices")
+def ingest_prices(
+    delay: float = typer.Option(0.1, help="Seconds between tcgcsv requests"),
 ) -> None:
-    """Download tcgcsv's daily TCGplayer price archives (every game) that aren't stored yet."""
-    from riffle.ingest import tcgcsv
+    """Keep today's prices: tcgcsv's price files for every game Riffle covers, and Scryfall's for Magic."""
+    _snapshot_prices(online=True, delay=delay)
+
+
+def _snapshot_prices(online: bool, delay: float = 0.1) -> None:
+    """Today's price snapshot. Problems are reported, never raised: a sync must finish without it."""
+    from riffle.ingest import scryfall, tcgcsv
 
     try:
-        start = date.fromisoformat(since) if since else date.today() - timedelta(days=days)
-    except ValueError as e:
-        raise typer.BadParameter("--since must be YYYY-MM-DD") from e
+        path, written = scryfall.snapshot_prices()
+        if written or online:  # offline resyncs (watch, ingest manabox) shouldn't repeat "already have"
+            _say(f"scryfall prices: {'kept' if written else 'already have'} {path.name.split('.')[0]}")
+    except FileNotFoundError:
+        typer.echo("  ! scryfall prices: no bulk file yet — run: riffle ingest scryfall", err=True)
+    except (OSError, ValueError, KeyError) as e:
+        typer.echo(f"  ! scryfall prices: {e}", err=True)
+    if not online:
+        return
 
-    def streaming(day: date, done: int, total: int | None) -> None:
-        _live(f"{day}  {_size(done, total)}")
+    def streaming(game: str, done: int, total: int) -> None:
+        _live(f"tcgcsv prices: {game}  {done}/{total} groups")
 
-    meter = streaming if sys.stdout.isatty() else None
-    res = tcgcsv.ingest(start, delay=delay, progress=_say, meter=meter)
-    typer.echo(_archive_summary(res))
-    for day, err in res.failed:
-        typer.echo(f"  ! {day}: {err}", err=True)
-
-
-def _archive_summary(res) -> str:
-    from riffle.ingest import tcgcsv
-
-    days = tcgcsv.stored_days()
-    span = f"{days[0]} → {days[-1]}" if days else "none yet"
-    line = (
-        f"{len(res.fetched)} new days · {res.skipped} already stored · "
-        f"{len(days)} stored ({span}, {tcgcsv.stored_bytes() / 1e9:.2f} GB) · {tcgcsv.store_dir()}"
-    )
-    if res.pending:
-        line += f"\nnot published yet — retried next run: {', '.join(str(d) for d in res.pending)}"
-    return line
+    try:
+        snap = tcgcsv.snapshot(delay=delay, progress=streaming if sys.stdout.isatty() else None)
+    except (OSError, net.FetchError) as e:
+        typer.echo(f"  ! tcgcsv prices: {e}", err=True)
+        return
+    parts = [f"{g} {n} groups" for g, n in snap.groups.items()]
+    if snap.skipped:
+        parts.append(f"already have {', '.join(snap.skipped)}")
+    _say(f"tcgcsv prices: {snap.day} · {' · '.join(parts)} · {snap.requests} requests")
+    for game, why in snap.failed:
+        typer.echo(f"  ! tcgcsv prices: {game}: {why}", err=True)
 
 
 def _events(fmt: list[str], days: int, kind: list[str] | None):
@@ -440,17 +443,11 @@ def _run_sync(offline: bool = True) -> None:
 
     cfg0 = config.load()
     if not offline:
-        from riffle.ingest import scryfall, tcgcsv
+        from riffle.ingest import scryfall
 
         msg = scryfall.refresh(progress=_download_meter("Scryfall bulk data"))
         _say(msg)
-        try:
-            archive = tcgcsv.ingest(date.today() - timedelta(days=3))
-            typer.echo(f"price archive: {len(archive.fetched)} new days · {len(tcgcsv.stored_days())} stored")
-            for day, err in archive.failed:
-                typer.echo(f"  ! price archive {day}: {err}", err=True)
-        except OSError as e:  # the archive is a bonus; never let it stop a sync
-            typer.echo(f"  ! price archive skipped: {e}", err=True)
+    _snapshot_prices(online=not offline)
     newest = manabox.newest_export(cfg0.downloads)
     stored = cfg0.collection_csv
     if newest and (not stored.exists() or newest.stat().st_mtime > stored.stat().st_mtime):
@@ -474,8 +471,8 @@ def _run_sync(offline: bool = True) -> None:
 
 
 @app.command("sync")
-def sync_cmd(offline: bool = typer.Option(False, help="Skip the Scryfall refresh and price archive")) -> None:
-    """Refresh prices and the price archive, pick up a ManaBox export, rewrite _generated/, append _log/."""
+def sync_cmd(offline: bool = typer.Option(False, help="Skip the Scryfall refresh and tcgcsv prices")) -> None:
+    """Refresh card data, keep today's prices, pick up a ManaBox export, rewrite _generated/, append _log/."""
     _run_sync(offline=offline)
 
 

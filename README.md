@@ -62,15 +62,20 @@ A deck is named by its note's slug, or by a path to any `.md` or `.txt` list.
 ## Price history (every game)
 
 ```bash
-riffle ingest tcgcsv                           # last 7 days of TCGplayer price archives from tcgcsv.com
-riffle ingest tcgcsv --since 2024-02-08        # full backfill; the archive starts on that day
+riffle ingest prices                        # today's prices: tcgcsv for every game, Scryfall for Magic
 ```
 
-One compressed file per day holds TCGplayer prices for every game (Magic,
-Flesh and Blood, One Piece, ...). Files are stored as downloaded under
-`~/.local/share/riffle/tcgcsv/archive/`; loading them into a database comes later.
-`riffle sync` fetches the last few days on its own, so the scheduled job keeps the
-archive current.
+Riffle keeps its own price history, one snapshot a day, stored as the sources
+returned it under `~/.local/share/riffle/`:
+
+- `tcgcsv/daily/<day>/<game>/` — every set's TCGplayer price file from
+  tcgcsv.com for Magic, Flesh and Blood, and One Piece, fetched one file at a
+  time, once per day (tcgcsv's own rule since it took its bulk archive down).
+- `scryfall/daily/<day>.jsonl.gz` — each Magic printing's prices (USD, EUR,
+  MTGO tix) from the Scryfall bulk file the sync already downloads.
+
+`riffle sync` does this on its own, so the scheduled job builds the history
+day by day. Loading it into a database comes later.
 
 ## Keeping the vault current
 
@@ -125,7 +130,7 @@ gh codespace stop                                   # stops by itself when idle,
 | What | Where |
 |---|---|
 | Config | `~/.config/riffle/config.toml` — vault path |
-| Card data, collection, sync state, MTGO events, price archive | `~/.local/share/riffle/` — outside the synced vault |
+| Card data, collection, sync state, MTGO events, daily prices | `~/.local/share/riffle/` — outside the synced vault |
 | Database | Postgres 18 in Docker (`compose.yaml`, volume `tcg_pgdata`); `database_url` in config, password in `~/.pgpass` |
 | Output | `tcg/mtg/_generated/` and `tcg/mtg/_log/` in the vault — nothing else |
 

@@ -1,4 +1,5 @@
-"""Scryfall bulk data: download the default-cards file, load it into DuckDB.
+"""Scryfall bulk data: download the default-cards file, load it into DuckDB,
+and keep each day's prices.
 
 Published daily; carries oracle ids, legalities, and prices — including
 MTGO tix (Scryfall sources those from Cardhoarder). One API request for the
@@ -8,10 +9,17 @@ once a day, since prices only change daily. Headers and 429 handling: riffle.net
 Since 2026-07-20 bulk files are gzipped JSON Lines only, linked from
 `jsonl_download_uri`. The old `download_uri` (one big JSON array) is gone;
 it's still read if present so an older cached file keeps working.
+
+Prices: the bulk file is replaced every day, so its prices would be lost.
+snapshot_prices() keeps them: <data_dir>/scryfall/daily/<day>.jsonl.gz holds
+one line per printing, {"id": ..., "prices": {...}} exactly as Scryfall gave
+them (strings, in USD, EUR, and MTGO tix), where <day> is the bulk file's date.
 """
 
+import gzip
 import json
-from datetime import UTC, datetime
+from collections.abc import Iterator
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import duckdb
@@ -172,3 +180,57 @@ def refresh(force: bool = False, max_age_hours: float = 24, progress: net.Progre
         )
     )
     return f"loaded {rows:,} printings (Scryfall {info.get('updated_at', '?')})"
+
+
+def prices_dir() -> Path:
+    return data_dir() / "scryfall" / "daily"
+
+
+def bulk_file(dest_dir: Path | None = None) -> Path | None:
+    """The downloaded bulk file, if any."""
+    dest_dir = dest_dir or data_dir()
+    files = [p for p in dest_dir.glob("default-cards.*") if not p.name.endswith((".part", ".new"))]
+    return max(files, key=lambda p: p.stat().st_mtime) if files else None
+
+
+def _cards(bulk: Path) -> Iterator[dict]:
+    if ".jsonl" in bulk.name:
+        opener = gzip.open if bulk.name.endswith(".gz") else open
+        with opener(bulk, "rt", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    yield json.loads(line)
+    else:
+        with bulk.open(encoding="utf-8") as f:
+            yield from json.load(f)
+
+
+def bulk_day(bulk: Path) -> date:
+    """The day the bulk file's prices are for: Scryfall's updated_at, else the file's own date."""
+    if meta_path().exists():
+        stamp = json.loads(meta_path().read_text()).get("updated_at")
+        if stamp:
+            return datetime.fromisoformat(stamp).date()
+    return datetime.fromtimestamp(bulk.stat().st_mtime, UTC).date()
+
+
+def snapshot_prices(bulk: Path | None = None) -> tuple[Path, bool]:
+    """Keep the bulk file's prices for its day. Returns (file, whether it was written now)."""
+    bulk = bulk or bulk_file()
+    if bulk is None:
+        raise FileNotFoundError("no Scryfall bulk file yet")
+    dest = prices_dir() / f"{bulk_day(bulk).isoformat()}.jsonl.gz"
+    if dest.exists():
+        return dest, False
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+    try:
+        with gzip.open(tmp, "wt", encoding="utf-8") as out:
+            for card in _cards(bulk):
+                line = json.dumps({"id": card["id"], "prices": card.get("prices")}, separators=(",", ":"))
+                out.write(line + "\n")
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    tmp.replace(dest)
+    return dest, True
