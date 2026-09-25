@@ -111,6 +111,9 @@ riffle db status                # server and schema revision; exits 1 if unreach
 Tests marked `postgres` use a separate `tcg_test` database, recreated on every
 run; without a reachable server they skip.
 
+Every `uv run pytest` also measures line and branch coverage and lists the files
+with untested code. CI fails a run below 75%; `--no-cov` skips the measurement.
+
 ## GitHub Codespaces
 
 For working away from home without a local database: `.devcontainer/` sets up a

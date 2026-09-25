@@ -37,10 +37,18 @@ extend-immutable-calls = ["typer.Argument", "typer.Option"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 markers = ["postgres: needs a running Postgres; skipped when none is reachable"]
+# Every run measures coverage and lists the files with untested lines or branches.
+# CI adds --cov-fail-under; locally a single test file can still run on its own.
+addopts = "--cov --cov-report=term-missing:skip-covered"
+
+[tool.coverage.run]
+source = ["riffle"]
+branch = true
 
 [dependency-groups]
 dev = [
     "mypy>=2.3.1",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
     "ruff>=0.16.8",
 ]
