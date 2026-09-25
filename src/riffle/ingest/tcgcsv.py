@@ -35,13 +35,13 @@ from pathlib import Path
 
 from riffle import net
 from riffle.config import data_dir
+from riffle.progress import SILENT, Step, Tracker
 
 BASE = "https://tcgcsv.com"
 # Game code -> the game's category name on tcgcsv; IDs are looked up at run time.
 GAMES = {"mtg": "Magic", "fab": "Flesh & Blood TCG", "op": "One Piece Card Game"}
 
 Fetch = Callable[[str], bytes | None]  # url -> body, or None for 404
-Progress = Callable[[str, int, int], None]  # (game, groups done, groups total)
 
 
 @dataclass
@@ -141,7 +141,7 @@ def _fetch_game(
     target: Path,
     fetch: Fetch,
     delay: float,
-    progress: Progress | None,
+    step: Step,
     snap: Snapshot,
 ) -> None:
     """Every price file of one game into target, all or nothing."""
@@ -151,6 +151,7 @@ def _fetch_game(
         raise net.FetchError("groups: HTTP 404")
     group_ids = sorted(int(g["groupId"]) for g in _results(groups_body, "groups"))
     _write(target.parent / "groups.json", groups_body)
+    step.update(0, len(group_ids))
     tmp = target.with_name(target.name + ".part")
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -163,8 +164,7 @@ def _fetch_game(
                     out.write(f'{{"groupId": {gid}, "response": null}}\n')
                 else:
                     out.write(f'{{"groupId": {gid}, "response": {_one_line(body, f"group {gid}")}}}\n')
-                if progress:
-                    progress(game, n, len(group_ids))
+                step.update(n)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
@@ -176,14 +176,14 @@ def snapshot(
     games: dict[str, str] = GAMES,
     delay: float = 0.1,
     fetch: Fetch = _get,
-    progress: Progress | None = None,
+    tracker: Tracker = SILENT,
 ) -> Snapshot:
     """Store today's price files for every game that doesn't have them yet.
 
     "Today" is tcgcsv's last-updated date. A game whose file exists is skipped
     without a request; a game that fails part-way keeps nothing, so the next
     run fetches it whole. delay is the pause before each request (tcgcsv asks
-    for ~100 ms).
+    for ~100 ms). Each game is a step on the tracker, including stored ones.
     """
     stamp = last_updated(fetch)
     snap = Snapshot(day=stamp.date())
@@ -192,6 +192,7 @@ def snapshot(
     for game, target in list(todo.items()):
         if target.exists():
             snap.skipped.append(game)
+            tracker.step(f"tcgcsv {game}").ok(f"already have {snap.day}")
             del todo[game]
     if not todo:
         return snap
@@ -200,13 +201,17 @@ def snapshot(
     stamp_file = daily_dir() / snap.day.isoformat() / "last-updated.txt"
     _write(stamp_file, stamp.strftime("%Y-%m-%dT%H:%M:%S%z").encode())
     for game, target in todo.items():
-        if game not in ids:
-            snap.failed.append((game, f"tcgcsv has no category named {games[game]!r}"))
-            continue
-        try:
-            _fetch_game(game, ids[game], target, fetch, delay, progress, snap)
-        except net.FetchError as e:
-            snap.failed.append((game, str(e)))
+        step = tracker.step(f"tcgcsv {game}", unit="groups")
+        why = None if game in ids else f"tcgcsv has no category named {games[game]!r}"
+        if why is None:
+            try:
+                _fetch_game(game, ids[game], target, fetch, delay, step, snap)
+            except net.FetchError as e:
+                why = str(e)
+        if why is not None:
+            snap.failed.append((game, why))
+            step.fail(why)
             continue
         snap.fetched.append(game)
+        step.ok(f"{snap.groups[game]} groups")
     return snap

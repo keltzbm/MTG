@@ -365,6 +365,65 @@ def test_event_page_error_is_reported_and_run_continues(tmp_path, monkeypatch):
     assert res.failed == [(bad, "timed out")] and [e.slug for e in res.fetched] == [good]
 
 
+def test_each_format_is_a_step_with_its_total(tmp_path, monkeypatch, tracker):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    good, pending, broken = (
+        "modern-challenge-32-2026-09-1912850001",
+        "modern-league-2026-09-2012850002",
+        "pioneer-league-2026-09-2012850003",
+    )
+    pages = _site([good, pending, broken])
+    pages[f"https://www.mtgo.com/decklist/{pending}"] = _page(EMPTY)
+
+    def get(url):
+        if broken in url:
+            raise net.FetchError("timed out")
+        return pages[url]
+
+    mtgo.ingest(None, since=date(2026, 9, 1), until=date(2026, 9, 21), delay=0, get=get, tracker=tracker)
+    index, modern, pioneer = tracker.steps
+    assert (index.label, index.total, index.unit) == ("mtgo.com index", 1, "months")
+    assert index.outcome == ("ok", "3 to fetch, 0 already stored")
+    assert (modern.label, modern.total, modern.unit) == ("mtgo modern", 2, "events")
+    assert modern.updates == [(1, None), (2, None)]
+    assert modern.outcome == ("ok", "1 new, 1 not published yet")
+    assert pioneer.outcome == ("fail", "1 failed")
+
+    tracker.steps.clear()
+    mtgo.ingest("modern", since=date(2026, 9, 1), until=date(2026, 9, 21), delay=0, get=get, tracker=tracker)
+    assert tracker.outcomes() == {
+        "mtgo.com index": ("ok", "1 to fetch, 1 already stored"),
+        "mtgo modern": ("ok", "1 not published yet"),
+    }
+
+
+def test_an_unreadable_index_fails_its_step(tmp_path, monkeypatch, tracker):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+
+    def get(url):
+        raise net.FetchError("timed out")
+
+    mtgo.ingest("modern", since=date(2026, 9, 1), until=date(2026, 9, 21), delay=0, get=get, tracker=tracker)
+    assert tracker.outcomes() == {"mtgo.com index": ("fail", "0 to fetch, 0 already stored, 1 unreadable")}
+
+
+def test_an_event_linked_from_two_months_is_fetched_once(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    slug = "modern-league-2026-09-0112850001"
+    pages = _site([slug])
+    pages["https://www.mtgo.com/decklists/2026/08"] = pages["https://www.mtgo.com/decklists/2026/09"]
+    asked = []
+    res = mtgo.ingest(
+        "modern",
+        since=date(2026, 8, 1),
+        until=date(2026, 9, 21),
+        delay=0,
+        get=lambda u: asked.append(u) or pages[u],
+    )
+    assert [e.slug for e in res.fetched] == [slug]
+    assert asked.count(f"https://www.mtgo.com/decklist/{slug}") == 1
+
+
 def test_index_requests_are_paced_too(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     sleeps = []

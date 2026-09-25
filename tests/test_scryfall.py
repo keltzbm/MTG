@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 
+from riffle import net
 from riffle.ingest import scryfall
 from riffle.ingest.scryfall import download_url
 
@@ -70,3 +71,45 @@ def test_snapshot_needs_a_bulk_file(tmp_path, monkeypatch):
     (tmp_path / "riffle").mkdir()
     (tmp_path / "riffle" / "default-cards.jsonl.gz.part").write_bytes(b"")  # a half download doesn't count
     assert scryfall.bulk_file() is None
+
+
+# ---- refresh --------------------------------------------------------------------
+
+
+def test_refresh_reports_the_download_and_the_load(tmp_path, monkeypatch, tracker):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    bulk = tmp_path / "riffle" / "default-cards.jsonl.gz"  # download() writes into the data folder
+    bulk.parent.mkdir()
+    bulk.write_bytes(b"x" * 2_500_000)
+
+    def download(progress):
+        progress(2_500_000, 2_500_000)
+        return bulk, {"updated_at": "2026-09-24T21:05:23.456+00:00"}
+
+    monkeypatch.setattr(scryfall, "download", download)
+    monkeypatch.setattr(scryfall, "load", lambda path: 118_389)
+    scryfall.refresh(force=True, tracker=tracker)
+    assert tracker.outcomes() == {
+        "Scryfall bulk data": ("ok", "2.5 MB, Scryfall 2026-09-24"),
+        "card catalog": ("ok", "118,389 printings"),
+    }
+    assert tracker.steps[0].unit == "bytes" and tracker.steps[0].updates == [(2_500_000, 2_500_000)]
+    assert json.loads(scryfall.meta_path().read_text())["rows"] == 118_389
+
+
+def test_refresh_reports_a_failed_download_then_raises(tmp_path, monkeypatch, tracker):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+
+    def download(progress):
+        raise net.FetchError("HTTP 503")
+
+    monkeypatch.setattr(scryfall, "download", download)
+    with pytest.raises(net.FetchError):
+        scryfall.refresh(force=True, tracker=tracker)
+    assert tracker.outcomes() == {"Scryfall bulk data": ("fail", "HTTP 503")}
+
+
+def test_refresh_skips_a_recent_load(monkeypatch, tracker):
+    monkeypatch.setattr(scryfall, "is_stale", lambda max_age_hours: False)
+    scryfall.refresh(tracker=tracker)
+    assert tracker.outcomes() == {"Scryfall bulk data": ("ok", "current")}

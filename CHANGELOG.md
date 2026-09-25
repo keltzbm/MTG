@@ -35,6 +35,14 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
   `riffle sync --offline` still keeps the Scryfall prices, which need no request.
 
 ### Changed
+- Long-running commands (`sync`, `ingest scryfall`, `ingest prices`, `ingest mtgo`) show their steps as they
+  happen. On a terminal, a running step has a spinner, a bar with its count (or bytes and speed), and the
+  time so far; a finished one becomes a line with a green ✔ (red ✘ if it failed), its result, and how long it
+  took. Anywhere else, as in the scheduled job's `sync.log`, nothing animates: a dated line starts the run
+  and a timestamped line ends each step.
+- `riffle ingest mtgo` reads every month's index before fetching events, so each format's progress has a
+  total, and an event linked from two months is fetched once. One line per format replaces one per event.
+- Rich, already installed with Typer, is a declared dependency.
 - CI ends with one job, `CI passed`, that succeeds only when every other job did. `main` requires it, so a
   pull request set to auto-merge merges itself once CI is green, and nothing reaches `main` without it.
 - CI's test job is split in two: Linux with a Postgres service, macOS without (its runners have no Docker).

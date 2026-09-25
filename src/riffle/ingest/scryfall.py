@@ -26,6 +26,7 @@ import duckdb
 
 from riffle import net
 from riffle.config import data_dir
+from riffle.progress import SILENT, Tracker
 from riffle.store.db import connect, db_path
 
 BULK_INDEX = "https://api.scryfall.com/bulk-data"
@@ -165,21 +166,29 @@ def _create(con: duckdb.DuckDBPyConnection, source: str) -> None:
     """)
 
 
-def refresh(force: bool = False, max_age_hours: float = 24, progress: net.Progress | None = None) -> str:
+def refresh(force: bool = False, max_age_hours: float = 24, tracker: Tracker = SILENT) -> None:
+    """Download the bulk file and load it, unless the loaded one is recent. Failures are
+    reported to the tracker, then raised."""
     if not force and not is_stale(max_age_hours):
-        return "card data is current"
-    path, info = download(progress=progress)
-    rows = load(path)
-    meta_path().write_text(
-        json.dumps(
-            {
-                "updated_at": info.get("updated_at"),
-                "loaded_at": datetime.now(UTC).isoformat(),
-                "rows": rows,
-            }
-        )
-    )
-    return f"loaded {rows:,} printings (Scryfall {info.get('updated_at', '?')})"
+        tracker.step("Scryfall bulk data").ok("current")
+        return
+    step = tracker.step("Scryfall bulk data", unit="bytes")
+    try:
+        path, info = download(progress=step.update)
+    except Exception as e:
+        step.fail(str(e))
+        raise
+    updated = str(info.get("updated_at") or "?")
+    step.ok(f"{path.stat().st_size / 1e6:,.1f} MB, Scryfall {updated[:10]}")
+    step = tracker.step("card catalog")
+    try:
+        rows = load(path)
+    except Exception as e:
+        step.fail(str(e))
+        raise
+    meta = {"updated_at": info.get("updated_at"), "loaded_at": datetime.now(UTC).isoformat(), "rows": rows}
+    meta_path().write_text(json.dumps(meta))
+    step.ok(f"{rows:,} printings")
 
 
 def prices_dir() -> Path:

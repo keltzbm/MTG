@@ -23,6 +23,7 @@ from pathlib import Path
 
 from riffle import net
 from riffle.config import data_dir
+from riffle.progress import SILENT, Tracker
 
 BASE = "https://www.mtgo.com"
 KINDS = ("league", "challenge", "showcase", "qualifier", "preliminary", "other")
@@ -252,6 +253,78 @@ def is_stored(slug: str) -> bool:
         return False
 
 
+def _to_fetch(
+    months: list[tuple[int, int]],
+    fmts: set[str] | None,
+    kinds: set[str],
+    since: date,
+    until: date,
+    delay: float,
+    get: Callable[[str], str],
+    res: IngestResult,
+    tracker: Tracker,
+) -> dict[str, list[str]]:
+    """Read each month's index: format -> slugs to fetch, in index order. Stored events
+    count as skipped; an index that can't be read is recorded and the rest go on.
+    The step ends failed when an index couldn't be read."""
+    step = tracker.step("mtgo.com index", total=len(months), unit="months")
+    todo: dict[str, list[str]] = {}
+    seen: set[str] = set()  # an event linked from two months is fetched once
+    for i, (y, m) in enumerate(months):
+        url = f"{BASE}/decklists/{y}/{m:02d}"
+        if i:
+            time.sleep(delay)  # long backfills hit the index once per month: pace those too
+        try:
+            index = get(url)
+        except Exception as e:  # report and move on to the next month
+            res.failed.append((url, str(e)))
+            step.update(i + 1)
+            continue
+        for slug in event_slugs(index):
+            parsed = parse_slug(slug)
+            if parsed is None:
+                continue
+            name, day, _ = parsed
+            fmt = event_format(name)
+            if (fmts and fmt not in fmts) or classify(name) not in kinds:
+                continue
+            if not since.isoformat() <= day <= until.isoformat():
+                continue
+            if slug in seen:
+                continue
+            seen.add(slug)
+            if is_stored(slug):
+                res.skipped += 1
+                continue
+            todo.setdefault(fmt, []).append(slug)
+        step.update(i + 1)
+    note = f"{sum(map(len, todo.values()))} to fetch, {res.skipped} already stored"
+    if res.failed:
+        step.fail(f"{note}, {len(res.failed)} unreadable")
+    else:
+        step.ok(note)
+    return todo
+
+
+def _fetch_event(slug: str, get: Callable[[str], str], res: IngestResult) -> str:
+    """Fetch and store one event; record it in res. Returns "new", "not published yet", or "failed"."""
+    try:
+        page = get(f"{BASE}/decklist/{slug}")
+    except Exception as e:  # one broken page shouldn't stop the run
+        res.failed.append((slug, str(e)))
+        return "failed"
+    try:
+        event = parse_event(slug, extract_data(page))
+    except ValueError:
+        event = None  # page is up but the data isn't yet
+    if event is None or not event.decks:
+        res.pending.append(slug)
+        return "not published yet"
+    save(event)
+    res.fetched.append(event)
+    return "new"
+
+
 def ingest(
     formats: Iterable[str] | None,
     since: date,
@@ -259,51 +332,29 @@ def ingest(
     kinds: Iterable[str] | None = None,
     delay: float = 1.0,
     get: Callable[[str], str] = _get,
-    progress: Callable[[str], None] = lambda _: None,
+    tracker: Tracker = SILENT,
 ) -> IngestResult:
-    """Fetch new events. formats=None means every format."""
+    """Fetch new events. formats=None means every format.
+
+    Every month's index is read first, so each format's events are a step with
+    a known total on the tracker.
+    """
     until = until or date.today()
-    kinds = set(kinds or KINDS)
     if isinstance(formats, str):
         formats = [formats]
     fmts = {f.lower() for f in formats} if formats else None
     res = IngestResult()
-    for i, (y, m) in enumerate(_months(since, until)):
-        url = f"{BASE}/decklists/{y}/{m:02d}"
-        if i:
-            time.sleep(delay)  # long backfills hit the index once per month — pace those too
-        try:
-            index = get(url)
-        except Exception as e:  # report and move on to the next month
-            res.failed.append((url, str(e)))
-            continue
-        for slug in event_slugs(index):
-            parsed = parse_slug(slug)
-            if parsed is None:
-                continue
-            name, day, _ = parsed
-            if (fmts and event_format(name) not in fmts) or classify(name) not in kinds:
-                continue
-            if not since.isoformat() <= day <= until.isoformat():
-                continue
-            if is_stored(slug):
-                res.skipped += 1
-                continue
+    todo = _to_fetch(_months(since, until), fmts, set(kinds or KINDS), since, until, delay, get, res, tracker)
+    for fmt, slugs in todo.items():
+        step = tracker.step(f"mtgo {fmt}", total=len(slugs), unit="events")
+        counts = dict.fromkeys(("new", "not published yet", "failed"), 0)
+        for n, slug in enumerate(slugs, 1):
             time.sleep(delay)
-            try:
-                page = get(f"{BASE}/decklist/{slug}")
-            except Exception as e:  # one broken page shouldn't stop the run
-                res.failed.append((slug, str(e)))
-                continue
-            try:
-                event = parse_event(slug, extract_data(page))
-            except ValueError:
-                res.pending.append(slug)  # page is up but the data isn't yet
-                continue
-            if not event.decks:
-                res.pending.append(slug)
-                continue
-            save(event)
-            res.fetched.append(event)
-            progress(f"{event.date}  {event.name:<32} {len(event.decks):>3} decks")
+            counts[_fetch_event(slug, get, res)] += 1
+            step.update(n)
+        note = ", ".join(f"{k} {what}" for what, k in counts.items() if k)
+        if counts["failed"]:
+            step.fail(note)
+        else:
+            step.ok(note or "nothing new")
     return res

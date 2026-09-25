@@ -10,38 +10,70 @@ from riffle.cli import app
 from riffle.ingest import scryfall, tcgcsv
 
 
+def fake_snapshot(fetched: dict[str, int], failed: dict[str, str] | None = None):
+    """A tcgcsv.snapshot that reports to the tracker as the real one does."""
+
+    def snapshot(delay, tracker):
+        snap = tcgcsv.Snapshot(day=date(2026, 9, 24), fetched=list(fetched), groups=dict(fetched))
+        for game, n in fetched.items():
+            tracker.step(f"tcgcsv {game}", unit="groups").ok(f"{n} groups")
+        for game, why in (failed or {}).items():
+            snap.failed.append((game, why))
+            tracker.step(f"tcgcsv {game}", unit="groups").fail(why)
+        snap.requests = 1 + sum(fetched.values())
+        return snap
+
+    return snapshot
+
+
 def test_ingest_prices_reports_both_sources(monkeypatch):
-    monkeypatch.setattr(scryfall, "snapshot_prices", lambda: (Path("/d/2026-09-24.jsonl.gz"), True))
-    snap = tcgcsv.Snapshot(day=date(2026, 9, 24), fetched=["fab", "op"], skipped=["mtg"])
-    snap.groups, snap.requests = {"fab": 105, "op": 87}, 194
-    monkeypatch.setattr(tcgcsv, "snapshot", lambda delay, progress: snap)
+    monkeypatch.setattr(
+        scryfall, "snapshot_prices", lambda: (Path("/d/scryfall/daily/2026-09-24.jsonl.gz"), True)
+    )
+    monkeypatch.setattr(tcgcsv, "snapshot", fake_snapshot({"fab": 105, "op": 87}))
     result = CliRunner().invoke(app, ["ingest", "prices"])
     assert result.exit_code == 0, result.output
-    assert "scryfall prices: kept 2026-09-24\n" in result.output
-    line = "tcgcsv prices: 2026-09-24 · fab 105 groups · op 87 groups · already have mtg · 194 requests"
-    assert line in result.output
+    lines = result.output.splitlines()
+    assert lines[0].endswith("  riffle ingest prices")
+    assert "  Scryfall prices: kept 2026-09-24 (" in lines[1]
+    assert "  tcgcsv fab: 105 groups (" in lines[2] and "  tcgcsv op: 87 groups (" in lines[3]
+    assert lines[4] == "tcgcsv prices: 2026-09-24 · 193 requests"
 
 
 def test_ingest_prices_survives_both_sources_failing(monkeypatch):
     def no_bulk():
         raise FileNotFoundError("no Scryfall bulk file yet")
 
-    def down(delay, progress):
+    def down(delay, tracker):
         raise net.FetchError("no answer after 3 tries")
 
     monkeypatch.setattr(scryfall, "snapshot_prices", no_bulk)
     monkeypatch.setattr(tcgcsv, "snapshot", down)
     result = CliRunner().invoke(app, ["ingest", "prices"])
     assert result.exit_code == 0, result.output
-    assert "scryfall prices: no bulk file yet — run: riffle ingest scryfall" in result.output
-    assert "tcgcsv prices: no answer after 3 tries" in result.output
+    assert "! Scryfall prices: no bulk file yet — run: riffle ingest scryfall" in result.output
+    assert "! tcgcsv prices: no answer after 3 tries" in result.output
 
 
 def test_a_game_that_failed_is_named(monkeypatch):
     monkeypatch.setattr(scryfall, "snapshot_prices", lambda: (Path("/d/2026-09-24.jsonl.gz"), False))
-    snap = tcgcsv.Snapshot(day=date(2026, 9, 24), fetched=["mtg"], failed=[("fab", "HTTP 503")])
-    snap.groups = {"mtg": 456}
-    monkeypatch.setattr(tcgcsv, "snapshot", lambda delay, progress: snap)
+    monkeypatch.setattr(tcgcsv, "snapshot", fake_snapshot({"mtg": 456}, failed={"fab": "HTTP 503"}))
     result = CliRunner().invoke(app, ["ingest", "prices"])
-    assert "scryfall prices: already have 2026-09-24\n" in result.output
-    assert "! tcgcsv prices: fab: HTTP 503" in result.output
+    assert "  Scryfall prices: already have 2026-09-24 (" in result.output
+    assert "! tcgcsv fab: HTTP 503" in result.output
+
+
+def test_an_offline_resync_mentions_prices_only_when_it_kept_some(monkeypatch):
+    kept = {"now": False}
+    monkeypatch.setattr(
+        scryfall, "refresh", lambda force, tracker: tracker.step("Scryfall bulk data").ok("current")
+    )
+    monkeypatch.setattr(scryfall, "snapshot_prices", lambda: (Path("/d/2026-09-24.jsonl.gz"), kept["now"]))
+    quiet = CliRunner().invoke(app, ["ingest", "scryfall", "--no-sync"])
+    assert quiet.exit_code == 0, quiet.output
+    assert "Scryfall bulk data: current" in quiet.output and "Scryfall prices" not in quiet.output
+    kept["now"] = True
+    assert (
+        "Scryfall prices: kept 2026-09-24"
+        in CliRunner().invoke(app, ["ingest", "scryfall", "--no-sync"]).output
+    )
