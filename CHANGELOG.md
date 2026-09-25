@@ -35,6 +35,8 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
   `riffle sync --offline` still keeps the Scryfall prices, which need no request.
 
 ### Changed
+- CI ends with one job, `CI passed`, that succeeds only when every other job did. `main` requires it, so a
+  pull request set to auto-merge merges itself once CI is green, and nothing reaches `main` without it.
 - CI's test job is split in two: Linux with a Postgres service, macOS without (its runners have no Docker).
 - `.env`, which holds the local database password for Compose, is ignored by git.
 - **Breaking:** the project is now Riffle (github.com/keltzbm/riffle). The package and command are
