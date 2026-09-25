@@ -172,3 +172,23 @@ def test_pretty_printed_response_still_takes_one_line(data_dir, sleeps):
 
 def test_default_games_are_the_three_riffle_covers():
     assert list(tcgcsv.GAMES) == ["mtg", "fab", "op"]
+
+
+def test_each_game_is_a_step(data_dir, sleeps, tracker):
+    answers = fab_answers(**{f"{B}/tcgplayer/68/groups": net.FetchError("HTTP 503")})
+    fetch, _ = fake_fetch(answers)
+    tcgcsv.snapshot({"fab": "Flesh & Blood TCG", "op": "One Piece Card Game"}, fetch=fetch, tracker=tracker)
+    fab, op = tracker.steps
+    assert (fab.label, fab.unit, fab.updates) == ("tcgcsv fab", "groups", [(0, 2), (1, None), (2, None)])
+    assert fab.outcome == ("ok", "2 groups") and op.outcome == ("fail", "HTTP 503")
+
+
+def test_a_stored_game_is_a_finished_step(data_dir, sleeps, tracker):
+    tcgcsv.snapshot(FAB, fetch=fake_fetch(fab_answers())[0])
+    tcgcsv.snapshot(FAB, fetch=fake_fetch(fab_answers())[0], tracker=tracker)
+    assert tracker.outcomes() == {"tcgcsv fab": ("ok", "already have 2026-09-24")}
+
+
+def test_an_unknown_category_fails_its_step(data_dir, sleeps, tracker):
+    tcgcsv.snapshot({"xx": "Nope"}, fetch=fake_fetch(fab_answers())[0], tracker=tracker)
+    assert tracker.outcomes() == {"tcgcsv xx": ("fail", "tcgcsv has no category named 'Nope'")}

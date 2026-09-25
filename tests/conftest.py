@@ -1,6 +1,7 @@
 """Shared fixtures: an in-memory Catalog (no DuckDB, no download) and a test Postgres."""
 
 import os
+from dataclasses import dataclass, field
 
 import pytest
 
@@ -147,6 +148,49 @@ class FakeCatalog:
 @pytest.fixture
 def cat():
     return FakeCatalog()
+
+
+# ---- progress -----------------------------------------------------------------------
+
+
+@dataclass
+class RecordedStep:
+    label: str
+    total: int | None
+    unit: str
+    updates: list[tuple[int, int | None]] = field(default_factory=list)
+    outcome: tuple[str, ...] | None = None  # ("ok", note), ("fail", why), ("drop",)
+
+    def update(self, done: int, total: int | None = None) -> None:
+        self.updates.append((done, total))
+
+    def ok(self, note: str = "") -> None:
+        self.outcome = ("ok", note)
+
+    def fail(self, why: str) -> None:
+        self.outcome = ("fail", why)
+
+    def drop(self) -> None:
+        self.outcome = ("drop",)
+
+
+class Recorder:
+    """A progress Tracker that keeps every step it was given, in order."""
+
+    def __init__(self) -> None:
+        self.steps: list[RecordedStep] = []
+
+    def step(self, label: str, total: int | None = None, unit: str = "") -> RecordedStep:
+        self.steps.append(RecordedStep(label, total, unit))
+        return self.steps[-1]
+
+    def outcomes(self) -> dict[str, tuple[str, ...] | None]:
+        return {s.label: s.outcome for s in self.steps}
+
+
+@pytest.fixture
+def tracker() -> Recorder:
+    return Recorder()
 
 
 # ---- Postgres ------------------------------------------------------------------

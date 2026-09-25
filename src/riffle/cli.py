@@ -1,7 +1,6 @@
 """The only user-facing surface. Everything here is a thin wrapper."""
 
 import shutil
-import sys
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated
@@ -11,6 +10,7 @@ import typer
 from riffle import config, net, vault
 from riffle import sync as syncmod
 from riffle.export import formats
+from riffle.progress import Tracker, open_tracker
 
 app = typer.Typer(help="Collection, decks, prices, and the Obsidian vault.", no_args_is_help=True)
 ingest_app = typer.Typer(help="Load outside data.", no_args_is_help=True)
@@ -47,35 +47,6 @@ def init() -> None:
         typer.echo(f"  ! `{key}` in config is ignored: {why}", err=True)
 
 
-def _live(text: str) -> None:
-    """Rewrite the current terminal line in place."""
-    typer.echo(f"\r\x1b[2K{text}", nl=False)
-
-
-def _size(done: int, total: int | None) -> str:
-    return f"{done / 1e6:,.1f}" + (f" / {total / 1e6:,.1f}" if total else "") + " MB"
-
-
-def _say(line: str) -> None:
-    """A finished line. On a terminal it replaces any live progress line."""
-    if sys.stdout.isatty():
-        _live(line + "\n")
-    else:
-        typer.echo(line)
-
-
-def _download_meter(label: str):
-    """A progress callback for one download, or None when no one is watching
-    (the scheduled job's log shouldn't fill with carriage returns)."""
-    if not sys.stdout.isatty():
-        return None
-
-    def show(done: int, total: int | None) -> None:
-        _live(f"{label}  {_size(done, total)}")
-
-    return show
-
-
 @ingest_app.command("scryfall")
 def ingest_scryfall(
     force: bool = typer.Option(False, help="Download even if under a day old"),
@@ -84,12 +55,12 @@ def ingest_scryfall(
     """Download Scryfall's bulk card data and load it."""
     from riffle.ingest import scryfall
 
-    msg = scryfall.refresh(force=force, progress=_download_meter("Scryfall bulk data"))
-    _say(msg)
-    if no_sync:
-        _snapshot_prices(online=False)
-    else:
-        _run_sync(offline=True)
+    with open_tracker("riffle ingest scryfall") as tracker:
+        scryfall.refresh(force=force, tracker=tracker)
+        if no_sync:
+            _snapshot_prices(tracker, online=False)
+        else:
+            _run_sync(tracker, offline=True)
 
 
 def _copy_manabox(src: Path) -> Path:
@@ -112,7 +83,7 @@ def ingest_manabox(
         raise typer.BadParameter("no ManaBox*.csv in ~/Downloads — pass a path")
     typer.echo(f"{src.name} -> {_copy_manabox(src)}")
     if not no_sync:
-        _run_sync(offline=True)
+        _resync()
 
 
 @ingest_app.command("arena")
@@ -168,8 +139,9 @@ def ingest_mtgo(
     """Fetch MTGO decklists (league 5-0s, challenges, showcases) from mtgo.com."""
     from riffle.ingest import mtgo
 
-    since = date.today() - timedelta(days=days)
-    res = mtgo.ingest(_formats(fmt), since, kinds=_kinds(kind), delay=delay, progress=typer.echo)
+    since, fmts, kinds = date.today() - timedelta(days=days), _formats(fmt), _kinds(kind)
+    with open_tracker("riffle ingest mtgo") as tracker:
+        res = mtgo.ingest(fmts, since, kinds=kinds, delay=delay, tracker=tracker)
     typer.echo(f"{len(res.fetched)} new events · {res.skipped} already stored · {mtgo.store_dir()}")
     if res.pending:
         typer.echo(f"{len(res.pending)} not published yet — retried next run: {', '.join(res.pending)}")
@@ -182,38 +154,37 @@ def ingest_prices(
     delay: float = typer.Option(0.1, help="Seconds between tcgcsv requests"),
 ) -> None:
     """Keep today's prices: tcgcsv's price files for every game Riffle covers, and Scryfall's for Magic."""
-    _snapshot_prices(online=True, delay=delay)
+    with open_tracker("riffle ingest prices") as tracker:
+        _snapshot_prices(tracker, online=True, delay=delay)
 
 
-def _snapshot_prices(online: bool, delay: float = 0.1) -> None:
+def _snapshot_prices(tracker: Tracker, online: bool, delay: float = 0.1) -> None:
     """Today's price snapshot. Problems are reported, never raised: a sync must finish without it."""
     from riffle.ingest import scryfall, tcgcsv
 
+    step = tracker.step("Scryfall prices")
     try:
         path, written = scryfall.snapshot_prices()
-        if written or online:  # offline resyncs (watch, ingest manabox) shouldn't repeat "already have"
-            _say(f"scryfall prices: {'kept' if written else 'already have'} {path.name.split('.')[0]}")
     except FileNotFoundError:
-        typer.echo("  ! scryfall prices: no bulk file yet — run: riffle ingest scryfall", err=True)
+        step.fail("no bulk file yet — run: riffle ingest scryfall")
     except (OSError, ValueError, KeyError) as e:
-        typer.echo(f"  ! scryfall prices: {e}", err=True)
+        step.fail(str(e))
+    else:
+        day = path.name.split(".")[0]
+        if written:
+            step.ok(f"kept {day}")
+        elif online:
+            step.ok(f"already have {day}")
+        else:
+            step.drop()  # offline resyncs (watch, ingest manabox) shouldn't repeat "already have"
     if not online:
         return
-
-    def streaming(game: str, done: int, total: int) -> None:
-        _live(f"tcgcsv prices: {game}  {done}/{total} groups")
-
     try:
-        snap = tcgcsv.snapshot(delay=delay, progress=streaming if sys.stdout.isatty() else None)
+        snap = tcgcsv.snapshot(delay=delay, tracker=tracker)
     except (OSError, net.FetchError) as e:
-        typer.echo(f"  ! tcgcsv prices: {e}", err=True)
+        tracker.step("tcgcsv prices").fail(str(e))
         return
-    parts = [f"{g} {n} groups" for g, n in snap.groups.items()]
-    if snap.skipped:
-        parts.append(f"already have {', '.join(snap.skipped)}")
-    _say(f"tcgcsv prices: {snap.day} · {' · '.join(parts)} · {snap.requests} requests")
-    for game, why in snap.failed:
-        typer.echo(f"  ! tcgcsv prices: {game}: {why}", err=True)
+    typer.echo(f"tcgcsv prices: {snap.day} · {snap.requests} requests")
 
 
 def _events(fmt: list[str], days: int, kind: list[str] | None):
@@ -437,7 +408,7 @@ def export_deck(
             typer.echo(f"{d.slug}: unmatched (left as written): {', '.join(rep.unresolved)}", err=True)
 
 
-def _run_sync(offline: bool = True) -> None:
+def _run_sync(tracker: Tracker, offline: bool = True) -> None:
     """Everything the data affects: collection pickup, prices, generated notes, logs."""
     from riffle.ingest import manabox
 
@@ -445,9 +416,8 @@ def _run_sync(offline: bool = True) -> None:
     if not offline:
         from riffle.ingest import scryfall
 
-        msg = scryfall.refresh(progress=_download_meter("Scryfall bulk data"))
-        _say(msg)
-    _snapshot_prices(online=not offline)
+        scryfall.refresh(tracker=tracker)
+    _snapshot_prices(tracker, online=not offline)
     newest = manabox.newest_export(cfg0.downloads)
     stored = cfg0.collection_csv
     if newest and (not stored.exists() or newest.stat().st_mtime > stored.stat().st_mtime):
@@ -470,10 +440,17 @@ def _run_sync(offline: bool = True) -> None:
         typer.echo(f"  ! {w}", err=True)
 
 
+def _resync() -> None:
+    """An offline sync, for commands that change local data."""
+    with open_tracker("riffle sync") as tracker:
+        _run_sync(tracker, offline=True)
+
+
 @app.command("sync")
 def sync_cmd(offline: bool = typer.Option(False, help="Skip the Scryfall refresh and tcgcsv prices")) -> None:
     """Refresh card data, keep today's prices, pick up a ManaBox export, rewrite _generated/, append _log/."""
-    _run_sync(offline=offline)
+    with open_tracker("riffle sync") as tracker:
+        _run_sync(tracker, offline=offline)
 
 
 def _watched(cfg: config.Config) -> dict[str, float]:
@@ -496,7 +473,7 @@ def watch(interval: float = typer.Option(5.0, help="Seconds between checks")) ->
 
     cfg = config.load()
     typer.echo(f"watching {cfg.mtg_dir} and ~/Downloads — Ctrl-C to stop")
-    _run_sync(offline=True)
+    _resync()
     seen = _watched(cfg)
     try:
         while True:
@@ -507,7 +484,7 @@ def watch(interval: float = typer.Option(5.0, help="Seconds between checks")) ->
                     Path(p).name for p in set(now) ^ set(seen) | {p for p in now if seen.get(p) != now[p]}
                 )
                 typer.echo(f"\n{datetime.now():%H:%M:%S} changed: {', '.join(changed)}")
-                _run_sync(offline=True)
+                _resync()
                 seen = _watched(cfg)
     except KeyboardInterrupt:
         typer.echo("\nstopped")

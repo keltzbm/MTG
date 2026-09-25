@@ -542,6 +542,7 @@ dependencies = [
     { name = "alembic" },
     { name = "duckdb" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "rich" },
     { name = "sqlalchemy" },
     { name = "typer" },
 ]
@@ -558,6 +559,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.13" },
     { name = "duckdb", specifier = ">=1.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "rich", specifier = ">=13.7" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "typer", specifier = ">=0.12" },
 ]
