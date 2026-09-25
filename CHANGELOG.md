@@ -7,6 +7,8 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 ## [Unreleased]
 
 ### Added
+- License: the GNU Affero General Public License v3.0 or later (`LICENSE`), declared in the package
+  metadata too. Card data and images stay under their sources' terms.
 - Test coverage: every `uv run pytest` measures line and branch coverage (pytest-cov) and lists the files with
   untested code. CI fails a run below 75%, a floor to raise as coverage grows.
 - Daily price snapshots, Riffle's own price history: `riffle ingest prices` (and `riffle sync`) fetch every
