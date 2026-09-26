@@ -1,4 +1,4 @@
-"""Shared fixtures: an in-memory Catalog (no DuckDB, no download) and a test Postgres."""
+"""Shared fixtures: an in-memory Catalog (no database, no download) and a test Postgres."""
 
 import os
 from dataclasses import dataclass, field
@@ -8,7 +8,7 @@ import pytest
 from riffle.models import CardRules, Prices, Printing
 
 CARDS = {
-    # oracle_id: (name, layout, usd, tix)
+    # card_id: (name, layout, usd, tix)
     "o-sol": ("Sol Ring", "normal", 1.0, 0.05),
     "o-rift": ("Cyclonic Rift", "normal", 30.0, 2.0),
     "o-forest": ("Forest", "normal", 0.1, 0.01),
@@ -29,7 +29,7 @@ CARDS = {
 
 _CMDR = {"commander": "legal", "duel": "legal"}
 RULES = {
-    # oracle_id: (legalities, color_identity, type_line, oracle_text)
+    # card_id: (legalities, color_identity, type_line, oracle_text)
     "o-sol": (
         {**_CMDR, "modern": "not_legal", "legacy": "banned", "vintage": "restricted"},
         (),
@@ -112,21 +112,15 @@ class FakeCatalog:
     def name(self, oid):
         return CARDS[oid][0]
 
-    def prices(self, oid):
-        c = CARDS.get(oid)
-        return Prices(c[2], c[3]) if c else Prices()
+    def prices(self, card_ids):
+        return {c: Prices(*CARDS[c][2:4]) for c in card_ids if c in CARDS}
 
-    def printing(self, sid):
-        return PRINTINGS.get(sid)
+    def printings(self, sids):
+        return {s: PRINTINGS[s] for s in sids if s in PRINTINGS}
 
-    def printing_at(self, set_code, num):
-        for p in PRINTINGS.values():
-            if p.set_code == set_code.lower() and p.collector_number == num:
-                return p
-        return None
-
-    def printing_usd(self, sid):
-        return None
+    def printings_at(self, places):
+        at = {(p.set_code, p.collector_number): p for p in PRINTINGS.values()}
+        return {(code, n): at[(code.lower(), n)] for code, n in places if (code.lower(), n) in at}
 
     def mtgo_name(self, oid):
         name, layout = CARDS[oid][:2]
@@ -140,9 +134,8 @@ class FakeCatalog:
     def is_basic(self, oid):
         return CARDS[oid][0] in {"Forest", "Island", "Plains", "Swamp", "Mountain", "Wastes"}
 
-    def rules(self, oid):
-        r = RULES.get(oid)
-        return CardRules(*r) if r else None
+    def rules(self, card_ids):
+        return {c: CardRules(*RULES[c]) for c in card_ids if c in RULES}
 
 
 @pytest.fixture

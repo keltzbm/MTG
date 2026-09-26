@@ -16,7 +16,7 @@ RARITIES = ("mythic", "rare", "uncommon", "common")
 
 @dataclass
 class Row:
-    oracle_id: str
+    card_id: str
     name: str
     needed: int  # copies the deck plays
     owned: int  # copies you have, anywhere
@@ -38,11 +38,11 @@ def diff(deck: Deck, owned: Counter, catalog: Catalog) -> list[Row]:
     """Assumes resolve_deck() has run. Plain basics always count as owned."""
     needed: Counter = Counter()
     for e in deck.entries:
-        if e.oracle_id:
-            needed[e.oracle_id] += e.quantity
+        if e.card_id:
+            needed[e.card_id] += e.quantity
     rows = [
-        Row(oid, catalog.name(oid), n, n if catalog.is_basic(oid) else owned.get(oid, 0))
-        for oid, n in needed.items()
+        Row(card_id, catalog.name(card_id), n, n if catalog.is_basic(card_id) else owned.get(card_id, 0))
+        for card_id, n in needed.items()
     ]
     return sorted(rows, key=lambda r: (r.status != BUY, r.name))
 
@@ -59,5 +59,5 @@ def wildcards(rows: list[Row], catalog: Catalog) -> dict[str, int]:
     out = {r: 0 for r in RARITIES} | {"not on Arena": 0}
     for r in rows:
         if r.status == BUY:
-            out[catalog.arena_rarity(r.oracle_id) or "not on Arena"] += r.shortfall
+            out[catalog.arena_rarity(r.card_id) or "not on Arena"] += r.shortfall
     return out

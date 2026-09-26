@@ -1,8 +1,8 @@
 """Postgres, the system of record from v0.4.0 on.
 
 The URL comes from the `database_url` config key and carries no password:
-libpq reads it from ~/.pgpass, so psql, psycopg, and DuckDB's postgres
-extension all connect the same way, the launchd job included.
+libpq reads it from ~/.pgpass, so psql and psycopg connect the same way,
+the launchd job included.
 """
 
 from sqlalchemy import Engine, create_engine, make_url

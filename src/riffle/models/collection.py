@@ -12,4 +12,4 @@ class Holding:
     collector_number: str | None = None
     foil: bool = False
     source: str = "manabox"  # manabox | arena
-    oracle_id: str | None = None
+    card_id: str | None = None

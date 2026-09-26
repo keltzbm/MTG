@@ -45,11 +45,24 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
   brings Postgres up and migrates it, so the database tests run there instead of skipping.
 
 ### Removed
+- **Breaking:** the DuckDB card catalog (`~/.local/share/riffle/mtg.duckdb`) and its loader, and DuckDB as a
+  dependency. Postgres holds the only catalog; delete the old file by hand.
 - **Breaking:** `riffle ingest tcgcsv` and the daily price-archive download. tcgcsv.com took the archive down
   (September 2026) and asks clients to fetch price files individually instead; the snapshots above replace it.
   `riffle sync --offline` still keeps the Scryfall prices, which need no request.
 
 ### Changed
+- **Breaking:** `own`, `price`, `legal`, `export`, and `sync` read cards from Postgres, which must be running,
+  migrated, and loaded (`riffle db up`, `riffle db upgrade`, `riffle ingest scryfall`). Each command reads one
+  read-only snapshot; when the catalog can't be read, it says what to run and exits 1. Names load once; a
+  collection's or deck's printings, prices, and rules load in one query each, through indexes. Cards are keyed
+  by Riffle's `card_id` instead of Scryfall's oracle ID. Cards and printings Scryfall stopped listing are left
+  out. Where cards share a name, a real card beats a token, emblem, or Art Series card, then the one with
+  more printings wins. `riffle sync --offline` gives the same notes as before, apart from the fix below.
+- The Postgres load's step is now "card catalog", its progress total the printing count of the last load.
+  A failed load keeps the last one; commands carry on with it.
+- `riffle ingest scryfall` records when the bulk file was downloaded (`downloaded_at` in `bulk-meta.json`);
+  the first run after this change downloads the file again.
 - `riffle ingest scryfall --force` reloads the Postgres catalog as well as downloading.
 - Tests run with their own config and data folders and a database URL nothing listens on, so no test can
   touch real files or the real database.
@@ -76,6 +89,13 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 - Type fixes found by mypy: code that uses a card's oracle id now receives it as a definite string instead
   of re-reading an optional field, and `riffle sync` no longer reuses one variable for the price archive and
   the sync result.
+
+### Fixed
+- Art Series cards ("Sol Ring // Sol Ring", about 2,200 of them) no longer count as the real card. The DuckDB
+  catalog folded them onto it along with Secret Lair reversibles, so an art card in a collection counted as
+  owning the card, its price could become the card's cheapest, and, as the newest printing, it replaced the
+  card's color identity (then empty) and type line: a Commander deck could pass the color-identity check with
+  an off-color card. About 5,500 cards were affected.
 
 ## [0.3.0] — 2026-09-23
 

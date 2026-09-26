@@ -8,6 +8,7 @@ the whole list — a digital collection doesn't share your paper cards.
 from dataclasses import dataclass
 
 from riffle.analysis.ownership import Row
+from riffle.models import Prices
 from riffle.store import Catalog
 
 
@@ -46,8 +47,9 @@ class DeckPrice:
 
 
 def price(rows: list[Row], catalog: Catalog) -> DeckPrice:
+    prices = catalog.prices([row.card_id for row in rows])
     lines = []
     for row in rows:
-        p = catalog.prices(row.oracle_id)
+        p = prices.get(row.card_id, Prices())
         lines.append(Line(row.name, row.needed, row.shortfall, p.usd, p.tix))
     return DeckPrice(lines)

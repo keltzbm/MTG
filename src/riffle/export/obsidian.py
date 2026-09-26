@@ -18,7 +18,7 @@ from pathlib import Path
 from riffle.analysis.ownership import BUY, MARK, OWN, Row, summary
 from riffle.analysis.pricing import DeckPrice
 from riffle.config import data_dir
-from riffle.models import Deck, Holding
+from riffle.models import Deck, Holding, Prices
 from riffle.store import Catalog
 
 
@@ -88,15 +88,19 @@ def deck_data(
 def collection_summary(holdings: list[Holding], catalog: Catalog, today: str) -> str:
     counted: list[tuple[str, Holding]] = []
     for h in holdings:
-        if h.source == "manabox" and h.oracle_id:
-            counted.append((h.oracle_id, h))
+        if h.source == "manabox" and h.card_id:
+            counted.append((h.card_id, h))
     total = sum(h.quantity for _, h in counted)
-    unique = len({oid for oid, _ in counted})
+    unique = len({card_id for card_id, _ in counted})
+    printed = catalog.printings({h.scryfall_id for _, h in counted if h.scryfall_id})
+    own_price = [p.usd if (p := printed.get(h.scryfall_id or "")) else None for _, h in counted]
+    cheapest = catalog.prices(
+        {card_id for (card_id, _), usd in zip(counted, own_price, strict=True) if usd is None}
+    )
     valued = []
-    for oid, h in counted:
-        usd = catalog.printing_usd(h.scryfall_id) if h.scryfall_id else None
-        if usd is None:
-            usd = catalog.prices(oid).usd
+    for (card_id, h), usd in zip(counted, own_price, strict=True):
+        if usd is None:  # no price for the printing owned: value it as the card's cheapest
+            usd = cheapest.get(card_id, Prices()).usd
         valued.append((usd or 0) * h.quantity)
     top = sorted(zip(valued, counted, strict=True), key=lambda x: -x[0])[:15]
     lines = [
@@ -112,7 +116,7 @@ def collection_summary(holdings: list[Holding], catalog: Catalog, today: str) ->
         "",
     ]
     lines += ["## Most valuable", "", "| Card | Copies | Value |", "|---|---|---|"]
-    lines += [f"| [[{catalog.name(oid)}]] | {h.quantity} | {_money(v)} |" for v, (oid, h) in top]
+    lines += [f"| [[{catalog.name(card_id)}]] | {h.quantity} | {_money(v)} |" for v, (card_id, h) in top]
     return "\n".join(lines) + "\n"
 
 
@@ -145,7 +149,7 @@ def append_version(log_dir: Path, deck: Deck, catalog: Catalog, today: str) -> b
         legacy.rename(log_dir / f"{deck.slug}-versions.md")
     cards: Counter[str] = Counter()
     for e in deck.entries:
-        cards[catalog.name(e.oracle_id) if e.oracle_id else e.name] += e.quantity
+        cards[catalog.name(e.card_id) if e.card_id else e.name] += e.quantity
     digest = hashlib.sha256(json.dumps(sorted(cards.items())).encode()).hexdigest()[:16]
     state = json.loads(_state_path().read_text()) if _state_path().exists() else {}
     prev = state.get(deck.slug)

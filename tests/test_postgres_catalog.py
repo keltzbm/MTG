@@ -1,0 +1,290 @@
+"""The card catalog every command reads, over Scryfall card objects loaded by the real loader."""
+
+from datetime import UTC, datetime
+
+import pytest
+from sqlalchemy import text
+
+from riffle.db import catalog, ids, migrate
+from riffle.ingest import scryfall_catalog as sc
+from riffle.models import Printing
+from riffle.store import postgres
+from riffle.store.postgres import PostgresCatalog, Unavailable
+
+PUBLISHED = datetime(2026, 9, 24, 21, tzinfo=UTC)
+LEGAL = {"commander": "legal", "modern": "not_legal", "legacy": "legal"}
+NOWHERE = dict.fromkeys(LEGAL, "not_legal")
+
+
+def card(sid, oracle, name, **fields):
+    """A Scryfall card object with what the loader needs, overridden by fields; a field
+    given as None is one the object lacks."""
+    obj = {
+        "id": sid,
+        "oracle_id": oracle,
+        "name": name,
+        "layout": "normal",
+        "set_id": "set-one",
+        "set": "one",
+        "set_name": "One",
+        "collector_number": sid,
+        "lang": "en",
+        "released_at": "2020-01-01",
+        "rarity": "rare",
+        "type_line": "Enchantment",
+        "oracle_text": "Text.",
+        "cmc": 1.0,
+        "colors": ["G"],
+        "color_identity": ["G"],
+        "legalities": dict(LEGAL),
+        "finishes": ["nonfoil"],
+        "games": ["paper", "mtgo"],
+        "prices": {"usd": "1.00", "tix": "0.10"},
+    }
+    code = fields.get("set", "one")
+    given = obj | {"set_id": f"set-{code}", "set_name": code.upper()} | fields
+    return {k: v for k, v in given.items() if v is not None}
+
+
+CARDS = [
+    # legality merges across printings: a newer gold-border printing legal nowhere hides nothing
+    card("lib-1", "o-lib", "Sylvan Library"),
+    card("lib-2", "o-lib", "Sylvan Library", released_at="2026-08-01", legalities=NOWHERE, prices={}),
+    card("crypt-1", "o-crypt", "Mana Crypt", legalities={**LEGAL, "commander": "banned"}),
+    card("crypt-2", "o-crypt", "Mana Crypt", released_at="2025-01-01"),
+    # the real Sol Ring, a Secret Lair reversible of it, and an art card that shares its front name
+    card("sol-1", "o-sol", "Sol Ring", type_line="Artifact", color_identity=[], colors=[]),
+    card("sol-2", "o-sol", "Sol Ring", type_line="Artifact", color_identity=[], colors=[], set="c21"),
+    card(
+        "sol-sld",
+        None,
+        "Sol Ring // Sol Ring",
+        layout="reversible_card",
+        type_line=None,
+        card_faces=[
+            {
+                "oracle_id": "o-sol",
+                "name": "Sol Ring",
+                "type_line": "Artifact",
+                "oracle_text": "{T}: Add {C}{C}.",
+            },
+            {
+                "oracle_id": "o-sol",
+                "name": "Sol Ring",
+                "type_line": "Artifact",
+                "oracle_text": "{T}: Add {C}{C}.",
+            },
+        ],
+        released_at="2026-01-01",
+        prices={"usd": "12.00"},
+    ),
+    card(
+        "sol-art",
+        "o-sol-art",
+        "Sol Ring // Sol Ring",
+        layout="art_series",
+        type_line="Card // Card",
+        color_identity=[],
+        released_at="2026-02-01",
+        prices={"usd": "0.25"},
+    ),
+    # a split card and a modal double-faced card whose text lives on its faces
+    card(
+        "fire",
+        "o-fire",
+        "Fire // Ice",
+        layout="split",
+        color_identity=["R", "U"],
+        oracle_text=None,
+        card_faces=[
+            {"name": "Fire", "oracle_text": "Fire text."},
+            {"name": "Ice", "oracle_text": "Ice text."},
+        ],
+    ),
+    card(
+        "valakut",
+        "o-valakut",
+        "Valakut Awakening // Valakut Stoneforge",
+        layout="modal_dfc",
+        oracle_text=None,
+        card_faces=[
+            {"name": "Valakut Awakening", "oracle_text": "Put cards."},
+            {"name": "Valakut Stoneforge"},
+        ],
+    ),
+    card(
+        "rider",
+        "o-rider",
+        "Murderous Rider // Swift End",
+        layout="adventure",
+        oracle_text=None,
+        card_faces=[{"name": "Murderous Rider"}, {"name": "Swift End"}],
+    ),
+    # prices: the cheapest paper printing that isn't digital, the cheapest tix of any
+    card("bolt-1", "o-bolt", "Lightning Bolt", prices={"usd": "2.50", "tix": "0.05"}),
+    card("bolt-2", "o-bolt", "Lightning Bolt", prices={"usd": "1.25", "tix": "0.50"}, set="m10"),
+    card("bolt-mo", "o-bolt", "Lightning Bolt", digital=True, prices={"usd": "0.01", "tix": "0.02"}),
+    # a Japanese printing with the English one's set and number
+    card(
+        "forest-ja", "o-forest", "Forest", lang="ja", collector_number="266", type_line="Basic Land — Forest"
+    ),
+    card("forest-en", "o-forest", "Forest", collector_number="266", type_line="Basic Land — Forest"),
+    # Arena: the lowest rarity among Arena printings, special counts as mythic
+    card("oko-1", "o-oko", "Oko, Thief of Crowns", rarity="mythic", games=["paper", "arena"]),
+    card("oko-2", "o-oko", "Oko, Thief of Crowns", rarity="rare", games=["paper"]),
+    card("mox", "o-mox", "Mox Amber", rarity="special", games=["arena"]),
+]
+
+
+def cid(oracle):
+    return str(ids.derive("scryfall_oracle", oracle))
+
+
+def load(pg, cards=CARDS):
+    catalog.load(pg, sc.build(cards, [], PUBLISHED), aliases={})
+    return PostgresCatalog(pg)
+
+
+pytestmark = pytest.mark.postgres
+
+
+@pytest.fixture
+def cat(pg):
+    return load(pg)
+
+
+def test_legality_is_the_strongest_status_across_printings(cat):
+    rules = cat.rules([cid("o-lib"), cid("o-crypt")])
+    assert rules[cid("o-lib")].legalities == LEGAL
+    assert rules[cid("o-crypt")].legalities["commander"] == "banned"
+
+
+def test_rules_come_from_the_card_never_a_reversible_or_art_printing(cat):
+    sol = cat.rules([cid("o-sol")])[cid("o-sol")]
+    assert (sol.type_line, sol.color_identity) == ("Artifact", ())
+    assert cat.rules([cid("o-fire")])[cid("o-fire")].color_identity == ("U", "R")  # WUBRG order
+    assert cat.rules([cid("o-valakut")])[cid("o-valakut")].oracle_text == "Put cards."
+    assert cat.rules([cid("o-fire")])[cid("o-fire")].oracle_text == "Fire text.\nIce text."
+
+
+def test_unknown_cards_have_no_rules(cat):
+    assert cat.rules([cid("o-nope"), cid("o-lib")]).keys() == {cid("o-lib")}
+    assert cat.rules([]) == {}
+
+
+@pytest.mark.parametrize(
+    ("name", "oracle"),
+    [
+        ("Fire // Ice", "o-fire"),
+        ("fire // ice", "o-fire"),
+        ("Fire/Ice", "o-fire"),
+        ("Fire", "o-fire"),
+        ("  Sylvan Library ", "o-lib"),
+        ("A-Sylvan Library", "o-lib"),
+        ("Valakut Awakening", "o-valakut"),
+        ("Sol Ring", "o-sol"),
+        ("Sol Ring // Sol Ring", "o-sol-art"),
+        ("Not A Card", None),
+    ],
+)
+def test_resolve(cat, name, oracle):
+    assert cat.resolve(name) == (cid(oracle) if oracle else None)
+
+
+def test_a_shared_name_means_a_real_card_then_the_one_with_more_printings(pg):
+    shared = [
+        # two real cards with one name: two printings beat one
+        card("twin-1", "o-twin-a", "Twin"),
+        card("twin-2", "o-twin-b", "Twin"),
+        card("twin-3", "o-twin-b", "Twin", set="two"),
+        # a token printed three times never beats the card it's named after
+        *(card(f"elf-t{n}", "o-elf-token", "Elf", layout="token", set=f"t{n}") for n in range(3)),
+        card("elf", "o-elf", "Elf"),
+    ]
+    cat = load(pg, CARDS + shared)
+    assert cat.resolve("Twin") == cid("o-twin-b")
+    assert cat.resolve("Elf") == cid("o-elf")
+
+
+def test_names_mtgo_names_and_basics(cat):
+    assert cat.name(cid("o-rider")) == "Murderous Rider // Swift End"
+    assert cat.mtgo_name(cid("o-fire")) == "Fire/Ice"
+    assert cat.mtgo_name(cid("o-rider")) == "Murderous Rider"
+    assert cat.mtgo_name(cid("o-lib")) == "Sylvan Library"
+    assert cat.is_basic(cid("o-forest")) and not cat.is_basic(cid("o-lib"))
+    assert cat.name("nope") == "nope" and cat.mtgo_name("nope") == "nope"
+
+
+def test_prices_are_the_cheapest_printing(cat):
+    found = cat.prices([cid("o-bolt"), cid("o-sol"), "nope"])
+    assert found.keys() == {cid("o-bolt"), cid("o-sol")}
+    bolt, sol = found[cid("o-bolt")], found[cid("o-sol")]
+    assert (bolt.usd, bolt.tix) == (1.25, 0.02)  # the digital printing's paper price doesn't count
+    assert (sol.usd, sol.tix) == (1.0, 0.1)  # the art card's $0.25 is its own
+    assert cat.prices([cid("o-sol")]) == {cid("o-sol"): sol} and cat.prices([]) == {}
+
+
+def test_arena_rarity(cat):
+    assert cat.arena_rarity(cid("o-oko")) == "mythic"  # the rare printing isn't on Arena
+    assert cat.arena_rarity(cid("o-mox")) == "mythic"
+    assert cat.arena_rarity(cid("o-lib")) is None
+
+
+def test_printings_by_scryfall_id(cat):
+    found = cat.printings(["bolt-2", "sol-sld", "nope"])
+    assert found == {
+        "bolt-2": Printing("bolt-2", cid("o-bolt"), "Lightning Bolt", "m10", "bolt-2", "", "", 1.25),
+        "sol-sld": Printing("sol-sld", cid("o-sol"), "Sol Ring", "one", "sol-sld", "", "", 12.0),
+    }
+    assert cat.printings(["nope"]) == {} and cat.printings([]) == {}
+
+
+def test_printings_at_a_set_and_number(cat):
+    found = cat.printings_at([("ONE", "266"), ("M10", "bolt-2"), ("one", "999")])
+    assert {place: p.scryfall_id for place, p in found.items()} == {
+        ("ONE", "266"): "forest-en",
+        ("M10", "bolt-2"): "bolt-2",
+    }
+    assert cat.printings_at([]) == {}
+
+
+def test_retired_rows_are_left_out(pg):
+    load(pg)
+    cat = load(pg, [c for c in CARDS if c["id"] not in {"bolt-2", "fire"}])
+    assert cat.printings(["bolt-2", "bolt-1"]).keys() == {"bolt-1"}
+    assert cat.printings_at([("M10", "bolt-2")]) == {}
+    assert cat.prices([cid("o-bolt")])[cid("o-bolt")].usd == 2.5
+    assert cat.resolve("Fire // Ice") is None and cat.rules([cid("o-fire")]) == {}
+
+
+# ---- opening the catalog -----------------------------------------------------------------
+
+
+def test_an_unreachable_server_says_how_to_start_it():
+    with pytest.raises(Unavailable) as e, postgres.open_catalog():
+        pass
+    message = str(e.value)
+    assert message.startswith("can't reach Postgres at postgresql+psycopg://tcg@127.0.0.1:1/unreachable: ")
+    assert message.endswith("start it with: riffle db up")
+
+
+def test_an_empty_catalog_says_to_ingest(pg_engine):
+    no_cards = "no Magic cards in Postgres yet — run: riffle ingest scryfall"
+    with pytest.raises(Unavailable, match=no_cards), postgres.open_catalog(pg_engine):
+        pass
+
+
+def test_a_schema_behind_says_to_upgrade(pg_engine, monkeypatch):
+    monkeypatch.setattr(migrate, "revision", lambda conn: "0001")
+    behind = f"schema 0001, head is {migrate.head()} — run: riffle db upgrade"
+    with pytest.raises(Unavailable, match=behind), postgres.open_catalog(pg_engine):
+        pass
+
+
+def test_a_command_reads_one_read_only_snapshot(pg_engine, monkeypatch):
+    monkeypatch.setattr(postgres, "check", lambda conn: None)
+    with postgres.open_catalog(pg_engine) as cat:
+        settings = cat.conn.execute(
+            text("SELECT current_setting('transaction_read_only'), current_setting('transaction_isolation')")
+        ).one()
+    assert tuple(settings) == ("on", "repeatable read")

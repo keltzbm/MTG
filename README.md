@@ -16,7 +16,10 @@ riffle init
 
 ## First run
 
+Postgres holds the card catalog, so set it up first ([Database](#database-postgres)).
+
 ```bash
+riffle db up && riffle db upgrade
 riffle ingest scryfall                          # ~500 MB download, once a day at most
 riffle ingest manabox ~/Downloads/collection.csv
 riffle sync --offline
@@ -108,12 +111,15 @@ riffle db upgrade               # apply pending migrations
 riffle db status                # server and schema revision; exits 1 if unreachable or behind
 ```
 
-`riffle ingest scryfall` and `riffle sync` also load the Scryfall download into
-the Postgres catalog (the "Postgres catalog" step): about 40 seconds the first
+`riffle ingest scryfall` and `riffle sync` load the Scryfall download into the
+card catalog in Postgres (the "card catalog" step): about 40 seconds the first
 time, a skip while the database holds that file already, and about 20 seconds
-for each new daily file, which mostly moves `last_seen` on the ID registry.
-Commands still read the DuckDB catalog while the move is under way, so when
-Postgres is down or behind, the step says why and the sync carries on.
+for each new daily file, which mostly moves `last_seen` on the ID registry. A
+failed load keeps the last one, and commands carry on with it.
+
+Every command that needs cards (`own`, `price`, `legal`, `export`, `sync`) reads
+them from Postgres in one read-only snapshot. When Postgres is down, its schema
+is behind, or it holds no cards yet, the command says what to run and exits 1.
 
 ```bash
 riffle ingest scryfall --force --no-sync    # reload the catalog even if Postgres holds the file
@@ -156,8 +162,8 @@ gh codespace stop                                   # stops by itself when idle,
 
 ## Invariants
 
-- Cards are keyed by `oracle_id` (Riffle's own IDs, derived from Scryfall's, in Postgres). Names are resolved
-  once, at the edge; unmatched names are reported, never dropped.
+- Cards are keyed by `card_id`, Riffle's own ID, derived from Scryfall's. Names are resolved once, at the
+  edge; unmatched names are reported, never dropped.
 - Colors are WUBRG order everywhere.
 - The vault is a render target. Authored notes are read, never written.
 

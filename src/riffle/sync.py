@@ -1,4 +1,4 @@
-"""The work behind `riffle sync`, kept free of CLI and DuckDB so it's testable."""
+"""The work behind `riffle sync`, kept free of the CLI and the database so it's testable."""
 
 from collections import Counter
 from dataclasses import dataclass, field
@@ -10,7 +10,7 @@ from riffle.analysis import ownership, pricing
 from riffle.analysis.resolve import counts, resolve_deck, resolve_holdings
 from riffle.export import formats, obsidian
 from riffle.ingest import arena, manabox
-from riffle.models import Deck, Holding
+from riffle.models import Deck, Holding, Prices
 from riffle.store import Catalog
 
 
@@ -21,7 +21,7 @@ class Inventory:
 
     @cached_property
     def owned(self) -> Counter:
-        """Copies owned per oracle_id. Computed once: holdings are resolved before
+        """Copies owned per card_id. Computed once: holdings are resolved before
         an Inventory is built and never change after."""
         return counts(self.holdings)
 
@@ -85,14 +85,18 @@ def run(mtg_dir: Path, inv: Inventory, catalog: Catalog, today: str | None = Non
         gen, obsidian.collection_summary(inv.holdings, catalog, today)
     )
     res.removed = obsidian.prune(gen, keep)
-    buys = []
+    wanted = []
     for name in vault.buy_cards(mtg_dir.parent):
-        oid = catalog.resolve(name)
-        if oid is None:
+        card_id = catalog.resolve(name)
+        if card_id is None:
             res.warnings.append(f"buy list: unmatched {name}")
-            continue
-        p = catalog.prices(oid)
-        buys.append((catalog.name(oid), p.usd, p.tix))
+        else:
+            wanted.append(card_id)
+    prices = catalog.prices(wanted)
+    buys = []
+    for card_id in wanted:
+        p = prices.get(card_id, Prices())
+        buys.append((catalog.name(card_id), p.usd, p.tix))
     res.prices_logged = obsidian.append_prices(log / "prices.md", buys, today)
     if inv.unresolved:
         res.warnings.append(f"collection: {len(inv.unresolved)} rows unmatched, e.g. {inv.unresolved[:3]}")
