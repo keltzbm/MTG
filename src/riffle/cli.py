@@ -1,7 +1,7 @@
 """The only user-facing surface. Everything here is a thin wrapper."""
 
 import shutil
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from datetime import date, timedelta
 from pathlib import Path
@@ -324,14 +324,40 @@ def legal(
         raise typer.Exit(1)
 
 
+def _text(value: object) -> str:
+    """A frontmatter value as text: a list's items joined, nothing when it's missing."""
+    if isinstance(value, list):
+        return ", ".join(map(str, value))
+    return "" if value is None else str(value)
+
+
+def _columns(rows: Sequence[Sequence[str]], right: Collection[int] = ()) -> list[str]:
+    """Rows as lines of columns two spaces apart, each as wide as its widest cell. Widths
+    count terminal cells, so accented and wide characters line up; columns in `right`
+    align right."""
+    from rich.cells import cell_len
+
+    widths = [max(map(cell_len, column)) for column in zip(*rows, strict=True)]
+    lines = []
+    for row in rows:
+        cells = []
+        for i, (cell, width) in enumerate(zip(row, widths, strict=True)):
+            pad = " " * (width - cell_len(cell))
+            cells.append(pad + cell if i in right else cell + pad)
+        lines.append("  ".join(cells).rstrip())
+    return lines
+
+
 @app.command()
 def decks() -> None:
     """List the deck notes the vault holds."""
     cfg = config.load()
-    for d in vault.decks(cfg.mtg_dir):
-        typer.echo(
-            f"{d.slug:<28} {d.meta.get('format', ''):<10} {d.meta.get('status', ''):<10} {d.count()} cards"
-        )
+    rows = [
+        (d.slug, _text(d.meta.get("format")), _text(d.meta.get("status")), f"{d.count()} cards")
+        for d in vault.decks(cfg.mtg_dir)
+    ]
+    for line in _columns(rows, right={3}):
+        typer.echo(line)
 
 
 SHOW = ("buy", "own", "all")
