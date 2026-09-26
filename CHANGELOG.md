@@ -55,6 +55,9 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
   `riffle sync --offline` still keeps the Scryfall prices, which need no request.
 
 ### Changed
+- `riffle decks` sizes each column to its longest value, so a long slug no longer pushes its row out of line.
+  Widths count terminal cells, so accented and wide characters line up too, and a format or status left empty
+  or written as a list no longer stops the command.
 - **Breaking:** a failed step no longer stops `sync`, `ingest scryfall`, `ingest prices`, or `ingest mtgo`:
   the command finishes what it can, then names the steps that failed and exits 1. A failed Scryfall download
   is reported instead of ending the sync with a traceback, and the sync carries on with the last download.
