@@ -41,6 +41,12 @@ def revision(conn: Connection) -> str | None:
     return MigrationContext.configure(conn).get_current_revision()
 
 
+def behind(conn: Connection) -> str | None:
+    """Why conn's database isn't ready for use, its schema being behind the code's, or None if it is."""
+    have, want = revision(conn), head()
+    return None if have == want else f"schema {have or 'empty'}, head is {want} — run: riffle db upgrade"
+
+
 def current(engine: Engine) -> str | None:
     with engine.connect() as conn:
         return revision(conn)

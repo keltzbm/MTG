@@ -28,7 +28,7 @@ def config_path() -> Path:
 
 
 def data_dir() -> Path:
-    """Bulk data, the DuckDB file, the collection CSV and sync state.
+    """Bulk data, daily price snapshots, the collection CSV and sync state.
 
     Never inside ~/atelier: that tree is synced.
     """

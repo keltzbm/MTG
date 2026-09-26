@@ -101,10 +101,10 @@ def test_unknown_format(cat):
     assert not rep.legal and "unknown format" in rep.issues[0].message
 
 
-def test_stale_card_data(cat, monkeypatch):
-    monkeypatch.setattr(type(cat), "rules", lambda self, oid: None)
+def test_a_card_without_rules_is_flagged_not_judged(cat, monkeypatch):
+    monkeypatch.setattr(type(cat), "rules", lambda self, card_ids: {})
     rep = legality.check_deck(_modern(), cat)
-    assert [i.message for i in rep.issues] == [legality.STALE]
+    assert rep.legal and {i.message for i in rep.warnings} == {"no legality data"}
 
 
 def test_one_odd_printing_cannot_hide_a_legal_card():

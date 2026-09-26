@@ -20,19 +20,19 @@ FORMATS = ("moxfield", "manabox", "mtgo", "arena", "tcgplayer")
 
 
 def owned_printings(holdings: list[Holding]) -> dict[str, Holding]:
-    """oracle_id -> the owned printing to pin: most copies, then non-foil."""
+    """card_id -> the owned printing to pin: most copies, then non-foil."""
     best: dict[str, Holding] = {}
     for h in holdings:
-        if not (h.oracle_id and h.set_code and h.collector_number) or h.source != "manabox":
+        if not (h.card_id and h.set_code and h.collector_number) or h.source != "manabox":
             continue
-        cur = best.get(h.oracle_id)
+        cur = best.get(h.card_id)
         if cur is None or (h.quantity, not h.foil) > (cur.quantity, not cur.foil):
-            best[h.oracle_id] = h
+            best[h.card_id] = h
     return best
 
 
 def _line(e: DeckEntry, name: str, pins: dict[str, Holding]) -> str:
-    h = pins.get(e.oracle_id or "")
+    h = pins.get(e.card_id or "")
     if h:
         return f"{e.quantity} {name} ({h.set_code}) {h.collector_number}"
     if e.set_code and e.collector_number:
@@ -41,7 +41,7 @@ def _line(e: DeckEntry, name: str, pins: dict[str, Holding]) -> str:
 
 
 def _name(e: DeckEntry, catalog: Catalog | None) -> str:
-    return catalog.name(e.oracle_id) if (catalog and e.oracle_id) else e.name
+    return catalog.name(e.card_id) if (catalog and e.card_id) else e.name
 
 
 def moxfield(deck: Deck, catalog: Catalog | None = None, pins: dict | None = None) -> str:
@@ -67,7 +67,7 @@ def manabox(deck: Deck, catalog: Catalog | None = None, pins: dict | None = None
 
 def mtgo(deck: Deck, catalog: Catalog | None = None, pins: dict | None = None) -> str:
     def nm(e: DeckEntry) -> str:
-        return catalog.mtgo_name(e.oracle_id) if (catalog and e.oracle_id) else e.name.split(" // ")[0]
+        return catalog.mtgo_name(e.card_id) if (catalog and e.card_id) else e.name.split(" // ")[0]
 
     main = [f"{e.quantity} {nm(e)}" for e in deck.board("main")]
     side = [

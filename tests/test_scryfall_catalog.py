@@ -1,4 +1,4 @@
-"""Scryfall card objects and set list -> catalog rows, and the Postgres catalog step."""
+"""Scryfall card objects and set list -> catalog rows, and the card catalog step."""
 
 import gzip
 import json
@@ -395,7 +395,7 @@ def write_download(cards, sets=SETS, published=PUBLISHED):
     with gzip.open(folder / "default-cards.jsonl.gz", "wt", encoding="utf-8") as f:
         f.writelines(json.dumps(card) + "\n" for card in cards)
     scryfall.sets_path().write_text(json.dumps({"object": "list", "data": sets}))
-    scryfall.meta_path().write_text(json.dumps({"updated_at": published.isoformat(), "rows": len(cards)}))
+    scryfall.meta_path().write_text(json.dumps({"updated_at": published.isoformat()}))
 
 
 @pytest.mark.postgres
@@ -416,7 +416,9 @@ def test_the_download_is_loaded_once(pg):
 @pytest.mark.postgres
 def test_a_newer_download_is_loaded(pg):
     write_download([printing()])
+    assert sc._printings_held(pg) == 0
     sc.load_catalog(pg)
+    assert sc._printings_held(pg) == 1  # the next load's progress total
     later = datetime(2026, 9, 25, 21, tzinfo=UTC)
     write_download([printing(prices={"usd": "0.30"})], published=later)
     loaded = sc.load_catalog(pg)
@@ -471,15 +473,13 @@ def test_the_step_reports_what_the_load_wrote(monkeypatch, tracker):
     result = LoadResult(sets=1, cards=2, printings=3, written={"cards": 2})
 
     def load_catalog(conn, force, progress):
-        progress(1)
+        progress(1000, 3)
         return sc.Loaded(PUBLISHED, result)
 
     assert update_with(monkeypatch, tracker, load_catalog) is result
-    assert tracker.outcomes() == {
-        "Postgres catalog": ("ok", "2 cards · 3 printings · 1 sets · 2 rows written")
-    }
+    assert tracker.outcomes() == {"card catalog": ("ok", "2 cards · 3 printings · 1 sets · 2 rows written")}
     (step,) = tracker.steps
-    assert (step.total, step.unit, step.updates) == (1, "printings", [(1, 1)])
+    assert (step.unit, step.updates) == ("printings", [(1000, 3)])
 
 
 def test_the_step_says_when_postgres_holds_the_download_already(monkeypatch, tracker):
@@ -491,7 +491,7 @@ def test_the_step_says_when_postgres_holds_the_download_already(monkeypatch, tra
 
     assert update_with(monkeypatch, tracker, load_catalog) is None
     assert forced == [False]
-    assert tracker.outcomes() == {"Postgres catalog": ("ok", "current, Scryfall 2026-09-24")}
+    assert tracker.outcomes() == {"card catalog": ("ok", "current, Scryfall 2026-09-24")}
 
 
 @pytest.mark.parametrize(
@@ -506,13 +506,13 @@ def test_the_step_says_when_postgres_holds_the_download_already(monkeypatch, tra
     ids=["not ready", "unexpected"],
 )
 def test_a_failed_load_is_reported_never_raised(monkeypatch, tracker, error, note):
-    """Nothing reads the Postgres catalog yet, so it can't stop a sync."""
+    """The catalog keeps its last load, so a failed one can't stop a sync."""
 
     def load_catalog(conn, force, progress):
         raise error
 
     assert update_with(monkeypatch, tracker, load_catalog) is None
-    assert tracker.outcomes() == {"Postgres catalog": ("fail", note)}
+    assert tracker.outcomes() == {"card catalog": ("fail", note)}
 
 
 def test_an_unreachable_server_is_reported(tracker):

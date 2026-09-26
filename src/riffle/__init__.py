@@ -1,7 +1,7 @@
 """Riffle: card game tooling — collection, decks, prices, metagame. See DESIGN.md.
 
 Invariants:
-  * oracle_id is the key. Names are resolved to it once, at the edge.
+  * card_id, Riffle's own ID for a card, is the key. Names are resolved to it once, at the edge.
   * Colors are ordered WUBRG, never alphabetically.
   * The vault is a render target; only _generated/ and _log/ are written.
 """

@@ -52,7 +52,7 @@ def test_bad_scryfall_id_falls_back_to_set_number_then_name(cat):
         Holding("Sol Ring", 1, scryfall_id="nope", set_code="XXX", collector_number="1"),
     ]
     assert resolve_holdings(hs, cat) == []
-    assert [h.oracle_id for h in hs] == ["o-rift", "o-sol"]
+    assert [h.card_id for h in hs] == ["o-rift", "o-sol"]
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,8 @@
 """The only user-facing surface. Everything here is a thin wrapper."""
 
 import shutil
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated
@@ -11,6 +13,7 @@ from riffle import config, net, vault
 from riffle import sync as syncmod
 from riffle.export import formats
 from riffle.progress import Tracker, open_tracker
+from riffle.store import Catalog
 
 app = typer.Typer(help="Collection, decks, prices, and the Obsidian vault.", no_args_is_help=True)
 ingest_app = typer.Typer(help="Load outside data.", no_args_is_help=True)
@@ -21,17 +24,25 @@ app.add_typer(meta_app, name="meta")
 DeckRef = Annotated[str, typer.Argument(help="Deck note slug (aesi-lands) or a path to .md/.txt")]
 
 
-def _catalog():
-    from riffle.store.db import DuckCatalog, connect
+@contextmanager
+def _catalog() -> Iterator[Catalog]:
+    """The card catalog for the rest of the block, or exit 1 saying what to run."""
+    from riffle.store import postgres
 
-    return DuckCatalog(connect())
+    with ExitStack() as stack:
+        try:
+            cat = stack.enter_context(postgres.open_catalog())
+        except postgres.Unavailable as e:
+            typer.echo(str(e), err=True)
+            raise typer.Exit(1) from e
+        yield cat
 
 
-def _setup():
+@contextmanager
+def _setup() -> Iterator[tuple[config.Config, Catalog, syncmod.Inventory]]:
     cfg = config.load()
-    cat = _catalog()
-    inv = syncmod.inventory(cfg.collection_csv, cat)
-    return cfg, cat, inv
+    with _catalog() as cat:
+        yield cfg, cat, syncmod.inventory(cfg.collection_csv, cat)
 
 
 @app.command()
@@ -48,7 +59,7 @@ def init() -> None:
 
 
 def _refresh(tracker: Tracker, force: bool = False) -> None:
-    """Scryfall's bulk file and set list, loaded into the DuckDB catalog and the Postgres one."""
+    """Scryfall's bulk file and set list, downloaded and loaded into the card catalog."""
     from riffle.ingest import scryfall, scryfall_catalog
 
     scryfall.refresh(force=force, tracker=tracker)
@@ -281,11 +292,11 @@ def legal(
     from riffle.analysis import legality
 
     cfg = config.load()
-    cat = _catalog()
     targets = vault.decks(cfg.mtg_dir) if deck == "all" else [vault.find(cfg.mtg_dir, deck)]
+    with _catalog() as cat:
+        reports = [legality.check_deck(d, cat, fmt) for d in targets]
     failed = False
-    for d in targets:
-        rep = legality.check_deck(d, cat, fmt)
+    for d, rep in zip(targets, reports, strict=True):
         head = f"{d.slug} · {rep.format}"
         if rep.legal and not rep.warnings:
             typer.echo(f"✓ {head}")
@@ -329,14 +340,15 @@ def own(
     if show not in SHOW:
         raise typer.BadParameter(f"--show must be one of {', '.join(SHOW)}")
     cfg = config.load()
-    cat = _catalog()
-    if on_arena:
-        if not cfg.arena_list.exists():
-            raise typer.BadParameter("no Arena collection yet — run: riffle ingest arena <file>")
-        inv = syncmod.arena_inventory(cfg.arena_list, cat)
-    else:
-        inv = syncmod.inventory(cfg.collection_csv, cat)
-    rep = syncmod.analyse(vault.find(cfg.mtg_dir, deck), inv, cat)
+    if on_arena and not cfg.arena_list.exists():
+        raise typer.BadParameter("no Arena collection yet — run: riffle ingest arena <file>")
+    with _catalog() as cat:
+        if on_arena:
+            inv = syncmod.arena_inventory(cfg.arena_list, cat)
+        else:
+            inv = syncmod.inventory(cfg.collection_csv, cat)
+        rep = syncmod.analyse(vault.find(cfg.mtg_dir, deck), inv, cat)
+        wc = wildcards(rep.rows, cat) if on_arena else {}
     buy_word = "Craft" if on_arena else "Buy"
 
     wanted = {"buy": [BUY], "own": [OWN], "all": [BUY, OWN]}[show]
@@ -354,7 +366,6 @@ def own(
     s = summary(rep.rows)
     typer.echo(f"\n{MARK[OWN]} {s[OWN]} own · {MARK[BUY]} {s[BUY]} {buy_word.lower()}")
     if on_arena:
-        wc = wildcards(rep.rows, cat)
         typer.echo("wildcards: " + " · ".join(f"{n} {k}" for k, n in wc.items() if n))
     elif show == "buy" and s[OWN]:
         typer.echo("(-a to list what you own too)")
@@ -367,8 +378,8 @@ def price(
     deck: DeckRef, budget_tix: float = typer.Option(None, help="Compare the MTGO total to a tix budget")
 ) -> None:
     """Paper cost to finish the deck, and MTGO cost for the whole list."""
-    cfg, cat, inv = _setup()
-    rep = syncmod.analyse(vault.find(cfg.mtg_dir, deck), inv, cat)
+    with _setup() as (cfg, cat, inv):
+        rep = syncmod.analyse(vault.find(cfg.mtg_dir, deck), inv, cat)
     dp = rep.price
     typer.echo(f"paper, whole deck    ${dp.usd_total:,.2f}")
     typer.echo(f"paper, still to buy  ${dp.usd_to_buy:,.2f}")
@@ -391,14 +402,16 @@ def export_deck(
     """Write a deck — or every deck, with 'all' — in a format another app imports."""
     if to not in formats.FORMATS:
         raise typer.BadParameter(f"--to must be one of {', '.join(formats.FORMATS)}")
-    cfg, cat, inv = _setup()
-    pins = formats.owned_printings(inv.holdings) if pin == "owned" else {}
-    targets = vault.decks(cfg.mtg_dir) if deck == "all" else [vault.find(cfg.mtg_dir, deck)]
     if deck == "all" and out is None:
         raise typer.BadParameter("exporting all decks needs --out <folder>")
-    for d in targets:
-        rep = syncmod.analyse(d, inv, cat)
-        text = formats.render(to, rep.deck, rep.rows, cat, pins)
+    with _setup() as (cfg, cat, inv):
+        pins = formats.owned_printings(inv.holdings) if pin == "owned" else {}
+        targets = vault.decks(cfg.mtg_dir) if deck == "all" else [vault.find(cfg.mtg_dir, deck)]
+        rendered = []
+        for d in targets:
+            rep = syncmod.analyse(d, inv, cat)
+            rendered.append((d, rep.unresolved, formats.render(to, rep.deck, rep.rows, cat, pins)))
+    for d, unresolved, text in rendered:
         if deck == "all":
             folder = out.expanduser()
             folder.mkdir(parents=True, exist_ok=True)
@@ -410,8 +423,8 @@ def export_deck(
             typer.echo(f"wrote {out}")
         else:
             typer.echo(text, nl=False)
-        if rep.unresolved:
-            typer.echo(f"{d.slug}: unmatched (left as written): {', '.join(rep.unresolved)}", err=True)
+        if unresolved:
+            typer.echo(f"{d.slug}: unmatched (left as written): {', '.join(unresolved)}", err=True)
 
 
 def _run_sync(tracker: Tracker, offline: bool = True) -> None:
@@ -427,13 +440,13 @@ def _run_sync(tracker: Tracker, offline: bool = True) -> None:
     if newest and (not stored.exists() or newest.stat().st_mtime > stored.stat().st_mtime):
         _copy_manabox(newest)
         typer.echo(f"picked up {newest.name} from Downloads")
-    cfg, cat, inv = _setup()
-    if not cfg.collection_csv.exists():
+    if not cfg0.collection_csv.exists():
         typer.echo(
             "no collection yet — export from ManaBox to ~/Downloads, or: riffle ingest manabox <csv>",
             err=True,
         )
-    res = syncmod.run(cfg.mtg_dir, inv, cat)
+    with _setup() as (cfg, cat, inv):
+        res = syncmod.run(cfg.mtg_dir, inv, cat)
     typer.echo(
         f"{len(res.decks)} decks · {res.changed_notes} notes updated · "
         f"{res.prices_logged} prices logged · versions changed: {', '.join(res.versions) or 'none'}"

@@ -1,4 +1,4 @@
-"""A Printing is a physical (or digital) object; many share one oracle_id."""
+"""A Printing is a physical (or digital) object; many share one card_id, Riffle's ID for the card."""
 
 from dataclasses import dataclass
 
@@ -6,12 +6,13 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Printing:
     scryfall_id: str
-    oracle_id: str
+    card_id: str  # Riffle's card ID, as text
     name: str
     set_code: str
     collector_number: str
     frame: str = ""
     border_color: str = ""
+    usd: float | None = None  # paper, nonfoil
 
     @property
     def is_old_border(self) -> bool:

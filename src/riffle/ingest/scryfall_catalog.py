@@ -30,6 +30,9 @@ What goes where:
 A load is skipped when Postgres already holds the downloaded bulk file: its
 external_ids.last_seen is the file's own updated_at, not the time of the load,
 so loading the same file again would change nothing.
+
+Every command reads cards from here (riffle.store.postgres). A failed load
+leaves the last one in place, so commands carry on with the day before's cards.
 """
 
 import sys
@@ -39,18 +42,18 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import Connection, Engine
+from sqlalchemy import Connection, Engine, func, select
 from sqlalchemy.exc import OperationalError
 
 from riffle import WUBRG, db
 from riffle.db import catalog, migrate
-from riffle.db.catalog import Batch, CardRow, LoadResult, PrintingRow, SetRow
+from riffle.db.catalog import TABLES, Batch, CardRow, LoadResult, PrintingRow, SetRow
 from riffle.ingest import scryfall
 from riffle.models import merge_legalities
 from riffle.progress import SILENT, Tracker
 
 GAME = "mtg"
-STEP = "Postgres catalog"
+STEP = "card catalog"
 
 FORMAT_NAMES = {
     "standard": "Standard",
@@ -219,13 +222,14 @@ def build(
 
 
 def load_catalog(
-    conn: Connection, force: bool = False, progress: Callable[[int], None] | None = None
+    conn: Connection, force: bool = False, progress: Callable[[int, int | None], None] | None = None
 ) -> Loaded:
     """Load the downloaded bulk file and set list on conn, inside the caller's transaction,
-    unless the catalog already holds this bulk file (force loads it anyway)."""
-    revision, head = migrate.revision(conn), migrate.head()
-    if revision != head:
-        raise NotReady(f"schema {revision or 'empty'}, head is {head} — run: riffle db upgrade")
+    unless the catalog already holds this bulk file (force loads it anyway). progress gets
+    the printings read so far and the count the last load held, a close guess at the total."""
+    why = migrate.behind(conn)
+    if why:
+        raise NotReady(why)
     bulk = scryfall.bulk_file()
     if bulk is None:
         raise NotReady("no bulk file yet — run: riffle ingest scryfall")
@@ -233,16 +237,22 @@ def load_catalog(
     loaded = catalog.loaded_through(conn, GAME)
     if not force and loaded is not None and loaded >= published:
         return Loaded(published, None)
-    batch = build(scryfall.cards(bulk), scryfall.read_sets(), published, progress)
+    total = _printings_held(conn) or None
+    counted = (lambda n: progress(n, total)) if progress else None
+    batch = build(scryfall.cards(bulk), scryfall.read_sets(), published, counted)
     return Loaded(published, catalog.load(conn, batch))
 
 
+def _printings_held(conn: Connection) -> int:
+    printings = TABLES["printings"]
+    held = select(func.count()).where(printings.c.game_id == GAME, printings.c.retired_at.is_(None))
+    return int(conn.execute(held).scalar_one())
+
+
 def update(tracker: Tracker = SILENT, force: bool = False, engine: Engine | None = None) -> LoadResult | None:
-    """The Postgres catalog step of a Scryfall refresh. Nothing reads the Postgres catalog yet
-    (DuckDB still serves every command), so a failure is reported on the step, never raised:
-    a sync must finish without it."""
-    total = scryfall.bulk_rows()
-    step = tracker.step(STEP, total=total, unit="printings")
+    """The card catalog step of a Scryfall refresh. A failure is reported on the step, never
+    raised: the catalog keeps its last load, which a sync can still use."""
+    step = tracker.step(STEP, unit="printings")
     eng = engine or db.engine()
     try:
         conn = eng.connect()
@@ -252,7 +262,7 @@ def update(tracker: Tracker = SILENT, force: bool = False, engine: Engine | None
         return None
     try:
         with conn, conn.begin():
-            loaded = load_catalog(conn, force, progress=lambda n: step.update(n, total))
+            loaded = load_catalog(conn, force, progress=step.update)
     except NotReady as e:
         step.fail(str(e))
         return None

@@ -76,7 +76,7 @@ def test_snapshot_needs_a_bulk_file(tmp_path, monkeypatch):
 # ---- refresh --------------------------------------------------------------------
 
 
-def test_refresh_reports_the_download_the_load_and_the_set_list(tmp_path, monkeypatch, tracker):
+def test_refresh_reports_the_download_and_the_set_list(tmp_path, monkeypatch, tracker):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     bulk = tmp_path / "riffle" / "default-cards.jsonl.gz"  # download() writes into the data folder
     bulk.parent.mkdir()
@@ -87,16 +87,23 @@ def test_refresh_reports_the_download_the_load_and_the_set_list(tmp_path, monkey
         return bulk, {"updated_at": "2026-09-24T21:05:23.456+00:00"}
 
     monkeypatch.setattr(scryfall, "download", download)
-    monkeypatch.setattr(scryfall, "load", lambda path: 118_389)
     monkeypatch.setattr(net, "get", lambda url, accept: b'{"data": [{"code": "lea"}, {"code": "leb"}]}')
     scryfall.refresh(force=True, tracker=tracker)
     assert tracker.outcomes() == {
         "Scryfall bulk data": ("ok", "2.5 MB, Scryfall 2026-09-24"),
-        "card catalog": ("ok", "118,389 printings"),
         "Scryfall set list": ("ok", "2 sets"),
     }
     assert tracker.steps[0].unit == "bytes" and tracker.steps[0].updates == [(2_500_000, 2_500_000)]
-    assert json.loads(scryfall.meta_path().read_text())["rows"] == 118_389
+    meta = json.loads(scryfall.meta_path().read_text())
+    assert meta["updated_at"] == "2026-09-24T21:05:23.456+00:00"
+    assert not scryfall.is_stale() and scryfall.is_stale(max_age_hours=0)
+
+
+def test_a_missing_or_unstamped_download_is_stale(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    assert scryfall.is_stale()
+    write_bulk(tmp_path / "riffle")  # a meta file without downloaded_at, as DuckDB-era loads wrote
+    assert scryfall.is_stale()
 
 
 def test_refresh_reports_a_failed_download_then_raises(tmp_path, monkeypatch, tracker):
@@ -175,14 +182,9 @@ def test_there_are_no_sets_before_the_first_fetch():
     assert scryfall.read_sets() == []
 
 
-def test_the_bulk_file_s_publication_time_and_row_count(tmp_path, monkeypatch):
+def test_the_bulk_file_s_publication_time(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     bulk = write_bulk(tmp_path / "riffle")
     assert scryfall.bulk_updated_at(bulk) == datetime(2026, 9, 24, 9, 5, 40, 725000, tzinfo=UTC)
     write_bulk(tmp_path / "riffle", updated_at="2026-09-24T09:05:40")
     assert scryfall.bulk_updated_at(bulk) == datetime(2026, 9, 24, 9, 5, 40, tzinfo=UTC)
-    assert scryfall.bulk_rows() == 2
-    scryfall.meta_path().write_text("{}")
-    assert scryfall.bulk_rows() is None
-    scryfall.meta_path().unlink()
-    assert scryfall.bulk_rows() is None

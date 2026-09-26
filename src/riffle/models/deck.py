@@ -10,7 +10,7 @@ class DeckEntry:
     board: str = "main"  # commander | main | sideboard | companion
     set_code: str | None = None  # a pinned printing, if the list had one
     collector_number: str | None = None
-    oracle_id: str | None = None  # filled by resolve()
+    card_id: str | None = None  # Riffle's card ID, filled by resolve()
 
 
 @dataclass
