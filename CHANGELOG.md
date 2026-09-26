@@ -7,6 +7,10 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 ## [Unreleased]
 
 ### Added
+- `riffle ingest mtgo --max-events N` fetches at most N event pages, newest first; later runs skip what's stored
+  and reach further back, so a long backfill spreads over several runs.
+- An old MTGO event that comes back empty on three runs, each time right after a good answer, is skipped from then
+  on and listed in `~/.local/share/riffle/mtgo-misses.json`; deleting the file retries them.
 - Tab completion for deck names and option values. With `riffle` itself on PATH (`uv run riffle` completes uv's
   arguments instead) and `riffle --install-completion zsh` run once, a deck argument completes from the vault's
   deck notes, plus `all` for `legal` and `export`, and `--to`, `--pin`, `--show`, `--board`, `--kind`, and
@@ -59,6 +63,13 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
   `riffle sync --offline` still keeps the Scryfall prices, which need no request.
 
 ### Changed
+- `riffle ingest mtgo` tells mtgo.com's throttling apart from missing data. Throttled, the site answers with
+  stripped pages instead of errors, which read as empty months and unpublished lists, so a long backfill silently
+  lost whole months. Now an index listing no events is a failure unless its month began under two days ago, and an
+  empty event page is "not published yet" only for an event under three days old; older, it's reported as empty,
+  fails its step, and is retried next run. Three bad answers in a row pause the run for 30 s, then 60 s and 120 s
+  after later streaks, and a bad streak after that stops it with exit 1. Months and events go newest first, event
+  pages get 60 s to answer instead of 20, and the summary prints even when a step failed.
 - Progress bars are drawn in block cells instead of a thin line: the leading cell fills from the bottom up
   (`▁▂▃▄▅▆▇█`) before the next one starts, over a dim `▁` track, and a step with no total shows a block sliding
   along the track, its front cell filling as its back cell empties. The display redraws 20 times a second
