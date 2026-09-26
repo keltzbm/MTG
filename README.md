@@ -78,6 +78,20 @@ fetches new ones.
 
 A deck is named by its note's slug, or by a path to any `.md` or `.txt` list.
 
+mtgo.com throttles long runs by answering with stripped pages rather than
+errors. Riffle tells those apart by age, pauses (30 s, then 60 s and 120 s)
+when bad answers come in a row, and stops after that; the next run picks up
+where it left off. For a long backfill, `--max-events` spreads the work over
+several runs, newest first:
+
+```zsh
+riffle ingest mtgo -f all --days 365 --max-events 300
+```
+
+An old event that stays empty on three runs is skipped from then on;
+`~/.local/share/riffle/mtgo-misses.json` lists them, and deleting it retries
+them.
+
 ## Price history (every game)
 
 ```bash

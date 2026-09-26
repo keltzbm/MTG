@@ -229,18 +229,37 @@ def ingest_mtgo(
     days: int = typer.Option(7, help="How far back to look"),
     kind: list[str] = KindOpt,
     delay: float = typer.Option(1.0, help="Seconds between page requests"),
+    max_events: int | None = typer.Option(
+        None,
+        "--max-events",
+        min=1,
+        help="Fetch at most this many events, newest first; later runs go further back",
+    ),
 ) -> None:
     """Fetch MTGO decklists (league 5-0s, challenges, showcases) from mtgo.com."""
     from riffle.ingest import mtgo
 
     since, fmts, kinds = date.today() - timedelta(days=days), _formats(fmt), _kinds(kind)
-    with _tracked("riffle ingest mtgo") as tracker:
-        res = mtgo.ingest(fmts, since, kinds=kinds, delay=delay, tracker=tracker)
-    typer.echo(f"{len(res.fetched)} new events · {res.skipped} already stored · {mtgo.store_dir()}")
-    if res.pending:
-        typer.echo(f"{len(res.pending)} not published yet — retried next run: {', '.join(res.pending)}")
-    for slug, err in res.failed:
-        typer.echo(f"  ! {slug}: {err}", err=True)
+    with _tracked("riffle ingest mtgo") as tracker:  # report inside: a failed step exits 1 on leaving
+        res = mtgo.ingest(fmts, since, kinds=kinds, delay=delay, max_events=max_events, tracker=tracker)
+        typer.echo(f"{len(res.fetched)} new events · {res.skipped} already stored · {mtgo.store_dir()}")
+        for slugs, what in (
+            (res.pending, "not published yet — retried next run"),
+            (res.empty, "empty though old enough to have lists, likely throttled — retried next run"),
+            (res.given_up, f"empty on {mtgo.GIVE_UP_AFTER} runs — skipped from now on"),
+        ):
+            if slugs:
+                typer.echo(f"{len(slugs)} {what}: {', '.join(slugs)}")
+        if res.missed:
+            typer.echo(f"{res.missed} skipped, given up on earlier runs")
+        if res.given_up or res.missed:
+            typer.echo(f"  to retry them, delete {mtgo.misses_path()}")
+        if res.left:
+            typer.echo(f"{res.left} left for the next run")
+        if res.stopped:
+            typer.echo(f"stopped early: {res.stopped}", err=True)
+        for slug, err in res.failed:
+            typer.echo(f"  ! {slug}: {err}", err=True)
 
 
 @ingest_app.command("prices")
