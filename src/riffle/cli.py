@@ -1,7 +1,7 @@
 """The only user-facing surface. Everything here is a thin wrapper."""
 
 import shutil
-from collections.abc import Collection, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from datetime import date, timedelta
 from pathlib import Path
@@ -21,7 +21,69 @@ app.add_typer(ingest_app, name="ingest")
 meta_app = typer.Typer(help="MTGO metagame: league 5-0s, challenges, showcases.", no_args_is_help=True)
 app.add_typer(meta_app, name="meta")
 
-DeckRef = Annotated[str, typer.Argument(help="Deck note slug (aesi-lands) or a path to .md/.txt")]
+# ---- tab completion --------------------------------------------------------------------
+# The shell runs `riffle` itself on every Tab press and offers what these return. When
+# nothing matches, Typer's zsh script falls back to file names, so a path still completes.
+
+
+def _offer(values: Iterable[str], incomplete: str) -> list[str]:
+    return [v for v in values if v.startswith(incomplete)]
+
+
+def _deck_names() -> list[str]:
+    """What `riffle decks` lists. Nothing when the vault can't be read, rather than a
+    traceback in the middle of the prompt."""
+    try:
+        return [d.slug for d in vault.decks(config.load().mtg_dir)]
+    except (OSError, ValueError):
+        return []
+
+
+def _complete_deck(incomplete: str) -> list[str]:
+    return _offer(_deck_names(), incomplete)
+
+
+def _complete_deck_or_all(incomplete: str) -> list[str]:
+    return _offer([*_deck_names(), "all"], incomplete)
+
+
+def _complete_legal_format(incomplete: str) -> list[str]:
+    from riffle.analysis.legality import FORMAT_RULES
+
+    return _offer(FORMAT_RULES, incomplete)
+
+
+def _complete_mtgo_format(incomplete: str) -> list[str]:
+    from riffle.ingest import mtgo
+
+    return _offer([*mtgo.FORMATS, "all"], incomplete)
+
+
+def _complete_kind(incomplete: str) -> list[str]:
+    from riffle.ingest import mtgo
+
+    return _offer(mtgo.KINDS, incomplete)
+
+
+def _choices(*values: str) -> Callable[[str], list[str]]:
+    """Completion from a fixed list."""
+
+    def complete(incomplete: str) -> list[str]:
+        return _offer(values, incomplete)
+
+    return complete
+
+
+DeckRef = Annotated[
+    str,
+    typer.Argument(help="Deck note slug (aesi-lands) or a path to .md/.txt", autocompletion=_complete_deck),
+]
+DecksRef = Annotated[
+    str,
+    typer.Argument(
+        help="Deck note slug (aesi-lands), a path to .md/.txt, or all", autocompletion=_complete_deck_or_all
+    ),
+]
 
 
 @contextmanager
@@ -133,6 +195,7 @@ KindOpt = typer.Option(
     "--kind",
     "-k",
     help="league | challenge | showcase | qualifier | preliminary; repeatable",
+    autocompletion=_complete_kind,
 )
 
 
@@ -150,6 +213,7 @@ FormatsOpt = typer.Option(
     "--format",
     "-f",
     help="modern, pioneer, pauper, ... or all; repeatable",
+    autocompletion=_complete_mtgo_format,
 )
 
 
@@ -236,7 +300,9 @@ def meta_cards(
     fmt: list[str] = FormatsOpt,
     days: int = typer.Option(14),
     kind: list[str] = KindOpt,
-    board: str = typer.Option("all", help="all | main | side"),
+    board: str = typer.Option(
+        "all", help="all | main | side", autocompletion=_choices("all", "main", "side")
+    ),
     top: int = typer.Option(40, help="Rows to show; 0 for all"),
 ) -> None:
     """Most-played cards: share of decks, average copies, main vs side."""
@@ -298,8 +364,14 @@ def meta_show(
 
 @app.command()
 def legal(
-    deck: DeckRef,
-    fmt: str = typer.Option(None, "--format", "-f", help="Check against another format; default: the note's"),
+    deck: DecksRef,
+    fmt: str = typer.Option(
+        None,
+        "--format",
+        "-f",
+        help="Check against another format; default: the note's",
+        autocompletion=_complete_legal_format,
+    ),
 ) -> None:
     """Is a deck legal? Size, copies, bans, sideboard, commander color identity. 'all' checks every deck."""
     from riffle.analysis import legality
@@ -366,7 +438,7 @@ SHOW = ("buy", "own", "all")
 @app.command()
 def own(
     deck: DeckRef,
-    show: str = typer.Option("buy", "--show", "-s", help="buy | own | all"),
+    show: str = typer.Option("buy", "--show", "-s", help="buy | own | all", autocompletion=_choices(*SHOW)),
     all_cards: bool = typer.Option(False, "--all", "-a", help="Same as --show all"),
     on_arena: bool = typer.Option(
         False, "--arena", help="Check against your Arena collection instead of paper"
@@ -433,9 +505,15 @@ def price(
 
 @app.command("export")
 def export_deck(
-    deck: DeckRef,
-    to: str = typer.Option("moxfield", help="moxfield | manabox | mtgo | arena | tcgplayer"),
-    pin: str = typer.Option("owned", help="owned | none — pin printings you own"),
+    deck: DecksRef,
+    to: str = typer.Option(
+        "moxfield",
+        help="moxfield | manabox | mtgo | arena | tcgplayer",
+        autocompletion=_choices(*formats.FORMATS),
+    ),
+    pin: str = typer.Option(
+        "owned", help="owned | none — pin printings you own", autocompletion=_choices("owned", "none")
+    ),
     out: Path = typer.Option(None, "-o", "--out", help="File, or a folder when the deck is 'all'"),
 ) -> None:
     """Write a deck — or every deck, with 'all' — in a format another app imports."""
