@@ -122,8 +122,8 @@ def download(dest_dir: Path | None = None, progress: net.Progress | None = None)
 
 
 def refresh(force: bool = False, max_age_hours: float = 24, tracker: Tracker = SILENT) -> None:
-    """Download the bulk file, unless the last one is recent; then the set list.
-    Bulk file failures are reported to the tracker, then raised."""
+    """Download the bulk file, unless the last one is recent; then the set list. A failure is
+    reported on its step, never raised: the last download stays, and a sync carries on with it."""
     if not force and not is_stale(max_age_hours):
         tracker.step("Scryfall bulk data").ok("current")
         if not sets_path().exists():
@@ -133,8 +133,8 @@ def refresh(force: bool = False, max_age_hours: float = 24, tracker: Tracker = S
     try:
         path, info = download(progress=step.update)
     except Exception as e:
-        step.fail(str(e))
-        raise
+        step.fail(str(e) or type(e).__name__)
+        return
     meta = {"updated_at": info.get("updated_at"), "downloaded_at": datetime.now(UTC).isoformat()}
     meta_path().write_text(json.dumps(meta))
     updated = str(info.get("updated_at") or "?")

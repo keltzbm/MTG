@@ -91,6 +91,11 @@ riffle schedule                    # times, next run, last result, log path
 riffle schedule remove
 ```
 
+The scheduled job runs as the Mac wakes, so `riffle sync` first waits up to two
+minutes for the network, then syncs offline if it's still down. No step stops a
+sync: each failure is reported, the rest carries on, and the command exits 1
+naming what failed. `riffle schedule` shows the last exit; `sync.log` says why.
+
 ## Database (Postgres)
 
 From v0.4.0 the data moves into Postgres, run locally in Docker (OrbStack on the

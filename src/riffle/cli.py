@@ -12,7 +12,7 @@ import typer
 from riffle import config, net, vault
 from riffle import sync as syncmod
 from riffle.export import formats
-from riffle.progress import Tracker, open_tracker
+from riffle.progress import Tracker, Watched, elapsed, open_tracker
 from riffle.store import Catalog
 
 app = typer.Typer(help="Collection, decks, prices, and the Obsidian vault.", no_args_is_help=True)
@@ -36,6 +36,19 @@ def _catalog() -> Iterator[Catalog]:
             typer.echo(str(e), err=True)
             raise typer.Exit(1) from e
         yield cat
+
+
+@contextmanager
+def _tracked(title: str) -> Iterator[Tracker]:
+    """A command's steps. A failed step doesn't stop the command: it finishes its work, then
+    names what failed and exits 1, so the scheduled job's last exit shows it."""
+    with open_tracker(title) as tracker:
+        watched = Watched(tracker)
+        yield watched
+    if watched.failed:
+        n = len(watched.failed)
+        typer.echo(f"{n} step{'s' * (n != 1)} failed: {', '.join(watched.failed)}", err=True)
+        raise typer.Exit(1)
 
 
 @contextmanager
@@ -72,7 +85,7 @@ def ingest_scryfall(
     no_sync: bool = typer.Option(False, "--no-sync", help="Don't resync the vault afterwards"),
 ) -> None:
     """Download Scryfall's bulk card data and set list, and load them."""
-    with open_tracker("riffle ingest scryfall") as tracker:
+    with _tracked("riffle ingest scryfall") as tracker:
         _refresh(tracker, force=force)
         if no_sync:
             _snapshot_prices(tracker, online=False)
@@ -157,7 +170,7 @@ def ingest_mtgo(
     from riffle.ingest import mtgo
 
     since, fmts, kinds = date.today() - timedelta(days=days), _formats(fmt), _kinds(kind)
-    with open_tracker("riffle ingest mtgo") as tracker:
+    with _tracked("riffle ingest mtgo") as tracker:
         res = mtgo.ingest(fmts, since, kinds=kinds, delay=delay, tracker=tracker)
     typer.echo(f"{len(res.fetched)} new events · {res.skipped} already stored · {mtgo.store_dir()}")
     if res.pending:
@@ -171,7 +184,7 @@ def ingest_prices(
     delay: float = typer.Option(0.1, help="Seconds between tcgcsv requests"),
 ) -> None:
     """Keep today's prices: tcgcsv's price files for every game Riffle covers, and Scryfall's for Magic."""
-    with open_tracker("riffle ingest prices") as tracker:
+    with _tracked("riffle ingest prices") as tracker:
         _snapshot_prices(tracker, online=True, delay=delay)
 
 
@@ -433,6 +446,8 @@ def _run_sync(tracker: Tracker, offline: bool = True) -> None:
 
     cfg0 = config.load()
     if not offline:
+        offline = not _online(tracker)
+    if not offline:
         _refresh(tracker)
     _snapshot_prices(tracker, online=not offline)
     newest = manabox.newest_export(cfg0.downloads)
@@ -457,16 +472,38 @@ def _run_sync(tracker: Tracker, offline: bool = True) -> None:
         typer.echo(f"  ! {w}", err=True)
 
 
+NETWORK_WAIT = 120.0  # seconds a sync waits for the network before carrying on offline
+
+
+def _online(tracker: Tracker) -> bool:
+    """Whether Scryfall can be reached, after waiting up to NETWORK_WAIT for it: the scheduled
+    job runs as the Mac wakes, before the network is back. Without it the sync goes offline."""
+    from urllib.parse import urlparse
+
+    from riffle.ingest import scryfall
+
+    step = tracker.step("network")
+    waited = net.wait_online(urlparse(scryfall.BULK_INDEX).hostname or "", timeout=NETWORK_WAIT)
+    if waited is None:
+        step.fail(f"no connection after {elapsed(NETWORK_WAIT)}; syncing offline")
+        return False
+    if waited < 1:
+        step.drop()
+    else:
+        step.ok(f"up after {elapsed(waited)}")
+    return True
+
+
 def _resync() -> None:
     """An offline sync, for commands that change local data."""
-    with open_tracker("riffle sync") as tracker:
+    with _tracked("riffle sync") as tracker:
         _run_sync(tracker, offline=True)
 
 
 @app.command("sync")
 def sync_cmd(offline: bool = typer.Option(False, help="Skip the Scryfall refresh and tcgcsv prices")) -> None:
     """Refresh card data, keep today's prices, pick up a ManaBox export, rewrite _generated/, append _log/."""
-    with open_tracker("riffle sync") as tracker:
+    with _tracked("riffle sync") as tracker:
         _run_sync(tracker, offline=offline)
 
 
@@ -482,6 +519,14 @@ def _watched(cfg: config.Config) -> dict[str, float]:
     return {str(p): p.stat().st_mtime for p in paths if p.exists()}
 
 
+def _resync_and_keep_watching() -> None:
+    """A failed resync is reported, and watching goes on: the next save may fix it."""
+    try:
+        _resync()
+    except typer.Exit:
+        typer.echo("resync failed; still watching", err=True)
+
+
 @app.command()
 def watch(interval: float = typer.Option(5.0, help="Seconds between checks")) -> None:
     """Resync whenever a deck note is saved or a new ManaBox export lands. Ctrl-C to stop."""
@@ -490,7 +535,7 @@ def watch(interval: float = typer.Option(5.0, help="Seconds between checks")) ->
 
     cfg = config.load()
     typer.echo(f"watching {cfg.mtg_dir} and ~/Downloads — Ctrl-C to stop")
-    _resync()
+    _resync_and_keep_watching()
     seen = _watched(cfg)
     try:
         while True:
@@ -501,7 +546,7 @@ def watch(interval: float = typer.Option(5.0, help="Seconds between checks")) ->
                     Path(p).name for p in set(now) ^ set(seen) | {p for p in now if seen.get(p) != now[p]}
                 )
                 typer.echo(f"\n{datetime.now():%H:%M:%S} changed: {', '.join(changed)}")
-                _resync()
+                _resync_and_keep_watching()
                 seen = _watched(cfg)
     except KeyboardInterrupt:
         typer.echo("\nstopped")
