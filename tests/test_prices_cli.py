@@ -40,7 +40,7 @@ def test_ingest_prices_reports_both_sources(monkeypatch):
     assert lines[4] == "tcgcsv prices: 2026-09-24 · 193 requests"
 
 
-def test_ingest_prices_survives_both_sources_failing(monkeypatch):
+def test_ingest_prices_reports_both_sources_failing_then_exits_1(monkeypatch):
     def no_bulk():
         raise FileNotFoundError("no Scryfall bulk file yet")
 
@@ -50,9 +50,10 @@ def test_ingest_prices_survives_both_sources_failing(monkeypatch):
     monkeypatch.setattr(scryfall, "snapshot_prices", no_bulk)
     monkeypatch.setattr(tcgcsv, "snapshot", down)
     result = CliRunner().invoke(app, ["ingest", "prices"])
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 1, result.output
     assert "! Scryfall prices: no bulk file yet — run: riffle ingest scryfall" in result.output
     assert "! tcgcsv prices: no answer after 3 tries" in result.output
+    assert result.output.rstrip().endswith("2 steps failed: Scryfall prices, tcgcsv prices")
 
 
 def test_a_game_that_failed_is_named(monkeypatch):

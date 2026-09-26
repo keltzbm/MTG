@@ -7,6 +7,9 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 ## [Unreleased]
 
 ### Added
+- `riffle sync` waits up to two minutes for the network before its first download, since the scheduled job
+  runs as the Mac wakes, before Wi-Fi is back. Without a connection by then, it syncs offline: today's
+  Scryfall prices from the last download, and the vault from the catalog Postgres already holds.
 - The Magic catalog in Postgres. `riffle ingest scryfall` and `riffle sync` load Scryfall's bulk file into
   new tables (migration `0002`): formats, sets, cards, printings, legalities, Magic's own card and printing
   columns, and `external_ids`, the registry mapping Scryfall's, MTGO's, and Arena's IDs to Riffle's. Riffle's
@@ -52,6 +55,11 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
   `riffle sync --offline` still keeps the Scryfall prices, which need no request.
 
 ### Changed
+- **Breaking:** a failed step no longer stops `sync`, `ingest scryfall`, `ingest prices`, or `ingest mtgo`:
+  the command finishes what it can, then names the steps that failed and exits 1. A failed Scryfall download
+  is reported instead of ending the sync with a traceback, and the sync carries on with the last download.
+  The scheduled job's last exit (`riffle schedule`) now shows whether anything went wrong.
+- `riffle watch` reports a failed resync and keeps watching.
 - **Breaking:** `own`, `price`, `legal`, `export`, and `sync` read cards from Postgres, which must be running,
   migrated, and loaded (`riffle db up`, `riffle db upgrade`, `riffle ingest scryfall`). Each command reads one
   read-only snapshot; when the catalog can't be read, it says what to run and exits 1. Names load once; a

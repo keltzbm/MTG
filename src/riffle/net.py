@@ -9,6 +9,7 @@ Downloads stream to <dest>.part and are renamed into place only when
 complete, so an interrupted run never leaves a truncated file.
 """
 
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -55,6 +56,20 @@ def _open(url: str, accept: str, timeout: float, retries: int):
             wait = backoff
         time.sleep(wait)
     raise AssertionError("unreachable")
+
+
+def wait_online(host: str, timeout: float = 120.0, pause: float = 5.0, port: int = 443) -> float | None:
+    """Seconds until host accepted a connection, or None if it didn't within timeout. A job
+    launchd runs as the Mac wakes starts before the network is back."""
+    start = time.monotonic()
+    while True:
+        try:
+            with socket.create_connection((host, port), timeout=pause):
+                return time.monotonic() - start
+        except OSError:
+            if time.monotonic() - start + pause > timeout:
+                return None
+            time.sleep(pause)
 
 
 def get(url: str, accept: str = "*/*", timeout: float = 60, retries: int = 2) -> bytes | None:

@@ -61,6 +61,36 @@ class _Silent:
 SILENT: Tracker = _Silent()
 
 
+class Watched:
+    """Passes every step on to another tracker and remembers which ones failed, so a
+    command can finish its work and still exit non-zero."""
+
+    def __init__(self, inner: Tracker) -> None:
+        self.inner = inner
+        self.failed: list[str] = []
+
+    def step(self, label: str, total: int | None = None, unit: str = "") -> "_WatchedStep":
+        return _WatchedStep(self, label, self.inner.step(label, total, unit))
+
+
+class _WatchedStep:
+    def __init__(self, watched: Watched, label: str, inner: Step) -> None:
+        self._watched, self._label, self._inner = watched, label, inner
+
+    def update(self, done: int, total: int | None = None) -> None:
+        self._inner.update(done, total)
+
+    def ok(self, note: str = "") -> None:
+        self._inner.ok(note)
+
+    def fail(self, why: str) -> None:
+        self._watched.failed.append(self._label)
+        self._inner.fail(why)
+
+    def drop(self) -> None:
+        self._inner.drop()
+
+
 def elapsed(seconds: float) -> str:
     """8.2s, 1m 54s, 2h 05m."""
     if seconds < 59.95:  # would round to 60.0s

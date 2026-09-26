@@ -106,16 +106,18 @@ def test_a_missing_or_unstamped_download_is_stale(tmp_path, monkeypatch):
     assert scryfall.is_stale()
 
 
-def test_refresh_reports_a_failed_download_then_raises(tmp_path, monkeypatch, tracker):
+@pytest.mark.parametrize("error", [net.FetchError("HTTP 503"), KeyError()], ids=["with a message", "without"])
+def test_a_failed_download_is_reported_never_raised(tmp_path, monkeypatch, tracker, error):
+    """A sync carries on with the last download."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
 
     def download(progress):
-        raise net.FetchError("HTTP 503")
+        raise error
 
     monkeypatch.setattr(scryfall, "download", download)
-    with pytest.raises(net.FetchError):
-        scryfall.refresh(force=True, tracker=tracker)
-    assert tracker.outcomes() == {"Scryfall bulk data": ("fail", "HTTP 503")}
+    scryfall.refresh(force=True, tracker=tracker)
+    assert tracker.outcomes() == {"Scryfall bulk data": ("fail", str(error) or "KeyError")}
+    assert not scryfall.meta_path().exists()
 
 
 def test_refresh_skips_a_recent_load(monkeypatch, tracker):

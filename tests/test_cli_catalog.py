@@ -1,11 +1,10 @@
 """The deck commands read the catalog through open_catalog, and exit 1 saying what to run without one."""
 
-from contextlib import contextmanager
-
 import pytest
 from typer.testing import CliRunner
 
 from riffle.cli import app
+from riffle.ingest import scryfall
 from riffle.store import postgres
 
 DECK = "4 Lightning Bolt\n1 Sol Ring\n2 Not A Card\n\n1 Cyclonic Rift\n"
@@ -17,21 +16,6 @@ def deck(tmp_path, monkeypatch):
     path = tmp_path / "burn.txt"
     path.write_text(DECK)
     return str(path)
-
-
-@pytest.fixture
-def opened(cat, monkeypatch):
-    """open_catalog yields the in-memory catalog; the list records each time it's opened and closed."""
-    events = []
-
-    @contextmanager
-    def open_catalog():
-        events.append("open")
-        yield cat
-        events.append("close")
-
-    monkeypatch.setattr(postgres, "open_catalog", open_catalog)
-    return events
 
 
 def run(*args):
@@ -92,6 +76,7 @@ def test_an_offline_sync_writes_the_vault_from_the_catalog(tmp_path, monkeypatch
     note = "---\ngame: mtg\nformat: modern\n---\n\n## Moxfield import\n\n```\n4 Lightning Bolt\n```\n"
     (mtg / "modern" / "burn.md").write_text(note)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))  # the default vault, under HOME
+    monkeypatch.setattr(scryfall, "snapshot_prices", lambda: (tmp_path / "2026-09-26.jsonl.gz", False))
     result = run("sync", "--offline")
     assert result.exit_code == 0, result.output
     assert "1 decks · 2 notes updated" in result.output

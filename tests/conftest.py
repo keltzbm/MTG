@@ -1,6 +1,7 @@
 """Shared fixtures: an in-memory Catalog (no database, no download) and a test Postgres."""
 
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 import pytest
@@ -141,6 +142,23 @@ class FakeCatalog:
 @pytest.fixture
 def cat():
     return FakeCatalog()
+
+
+@pytest.fixture
+def opened(cat, monkeypatch):
+    """open_catalog yields the in-memory catalog; the list records each time it's opened and closed."""
+    from riffle.store import postgres
+
+    events = []
+
+    @contextmanager
+    def open_catalog():
+        events.append("open")
+        yield cat
+        events.append("close")
+
+    monkeypatch.setattr(postgres, "open_catalog", open_catalog)
+    return events
 
 
 @pytest.fixture(autouse=True)
