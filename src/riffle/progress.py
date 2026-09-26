@@ -4,14 +4,13 @@ Ingest code reports through a Tracker and never draws anything itself: it
 opens a step, updates it with a count (or bytes) as work proceeds, and ends it
 with ok(note), fail(why), or drop() when there's nothing worth recording.
 
-The CLI picks the display with open_tracker(). On a terminal, Rich draws a
-line per running step: a spinner, a bar with the count or bytes and speed, and
-the time so far. A finished step turns into a permanent line, a green ✔ (or a
-red ✘) with its note and how long it took, printed in order with everything
-else the command says. Anywhere else, notably the scheduled job's sync.log,
-nothing animates: a dated line when the run starts, then a timestamped line as
-each step ends.
-"""
+The CLI picks the display with open_tracker(). On a terminal, Rich draws a line per
+running step: a spinner, a bar of block cells (see filled() and sliding()), the
+count or bytes and speed, and the time so far. A finished step turns into a
+permanent line, a green ✔ (or a red ✘) with its note and how long it took, printed
+in order with everything else the command says. Anywhere else, notably the scheduled
+job's sync.log, nothing animates: a dated line when the run starts, then a
+timestamped line as each step ends."""
 
 import sys
 import time
@@ -26,6 +25,11 @@ if TYPE_CHECKING:
     from rich.text import Text
 
 LABEL_WIDTH = 20
+BAR_WIDTH = 28  # cells
+REFRESH = 20  # redraws a second: a sliding block moves half a cell per redraw
+SLIDE_SPEED = 10  # cells a second, for the block on a bar with no total
+_RISE = "▁▂▃▄▅▆▇█"  # a cell filled one to eight eighths, from the bottom up
+_TRACK = "▁"  # an empty cell, drawn dim
 
 
 class Step(Protocol):
@@ -170,6 +174,45 @@ def _amount(task: "Task") -> "Text":
     return Text(text, style="progress.download")
 
 
+def filled(fraction: float, width: int = BAR_WIDTH) -> list[int]:
+    """Each cell's fill, in eighths, for a bar `fraction` done: whole cells, then the
+    leading cell part of the way up, then empty track."""
+    return _covered(0, int(min(max(fraction, 0.0), 1.0) * width * 8), width)
+
+
+def sliding(step: int, width: int = BAR_WIDTH) -> list[int]:
+    """Each cell's fill for a bar with no total, `step` eighths of a cell into the
+    animation: a block a quarter of the bar long slides in at the left and out at the
+    right, then again. Its front cell fills from the bottom up as its back cell empties,
+    so it moves an eighth of a cell at a time."""
+    size = max(1, width // 4)
+    head = step % ((width + size) * 8)
+    return _covered(head - size * 8, head, width)
+
+
+def _covered(tail: int, head: int, width: int) -> list[int]:
+    """How much of each cell, in eighths, lies between tail and head (also in eighths)."""
+    return [max(0, min(8 * i + 8, head) - max(8 * i, tail)) for i in range(width)]
+
+
+def _bar(task: "Task") -> "Text":
+    """A task's bar: filled to its share of the total, or a block sliding along the track
+    when there's no total."""
+    from rich.text import Text
+
+    if task.total is None:
+        cells = sliding(int(task.get_time() * SLIDE_SPEED * 8))
+    else:
+        cells = filled(task.completed / task.total if task.total else 1.0)
+    bar = Text()
+    for eighths in cells:
+        if eighths:
+            bar.append(_RISE[eighths - 1], "green")
+        else:
+            bar.append(_TRACK, "dim")
+    return bar
+
+
 class LiveTracker:
     """Running steps redrawn in place; finished steps printed as permanent lines.
 
@@ -178,22 +221,27 @@ class LiveTracker:
     """
 
     def __init__(self, console: "Console") -> None:
-        from rich.progress import BarColumn, ProgressColumn, SpinnerColumn, TextColumn, TimeElapsedColumn
         from rich.progress import Progress as RichProgress
+        from rich.progress import ProgressColumn, SpinnerColumn, TextColumn, TimeElapsedColumn
         from rich.table import Column
 
         class Amount(ProgressColumn):
             def render(self, task: "Task") -> "Text":
                 return _amount(task)
 
+        class Bar(ProgressColumn):
+            def render(self, task: "Task") -> "Text":
+                return _bar(task)
+
         self.console = console
         self.progress: Progress = RichProgress(
             SpinnerColumn(style="green"),
             TextColumn("{task.description}", markup=False, table_column=Column(width=LABEL_WIDTH)),
-            BarColumn(bar_width=28, complete_style="green", finished_style="green", pulse_style="green"),
+            Bar(),
             Amount(),
             TimeElapsedColumn(),
             console=console,
+            refresh_per_second=REFRESH,
         )
 
     def __enter__(self) -> "LiveTracker":

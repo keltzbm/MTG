@@ -59,6 +59,10 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
   `riffle sync --offline` still keeps the Scryfall prices, which need no request.
 
 ### Changed
+- Progress bars are drawn in block cells instead of a thin line: the leading cell fills from the bottom up
+  (`▁▂▃▄▅▆▇█`) before the next one starts, over a dim `▁` track, and a step with no total shows a block sliding
+  along the track, its front cell filling as its back cell empties. The display redraws 20 times a second
+  instead of 10, so both move smoothly.
 - `riffle decks` sizes each column to its longest value, so a long slug no longer pushes its row out of line.
   Widths count terminal cells, so accented and wide characters line up too, and a format or status left empty
   or written as a list no longer stops the command.

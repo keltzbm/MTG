@@ -73,6 +73,71 @@ def test_amount_shows_counts_or_bytes(total, done, unit, text):
     assert str(progress._amount(_task(total, done, unit))) == text
 
 
+@pytest.mark.parametrize(
+    ("fraction", "cells"),
+    [
+        (0, [0, 0, 0, 0]),
+        (1 / 32, [1, 0, 0, 0]),  # the leading cell starts at the bottom
+        (7 / 32, [7, 0, 0, 0]),
+        (8 / 32, [8, 0, 0, 0]),  # and fills before the next one begins
+        (9 / 32, [8, 1, 0, 0]),
+        (0.999, [8, 8, 8, 7]),  # full only when done
+        (1, [8, 8, 8, 8]),
+        (1.5, [8, 8, 8, 8]),
+        (-0.5, [0, 0, 0, 0]),
+    ],
+)
+def test_a_bar_fills_one_cell_from_the_bottom_up_before_the_next(fraction, cells):
+    assert progress.filled(fraction, width=4) == cells
+
+
+@pytest.mark.parametrize(
+    ("step", "cells"),
+    [
+        (0, [0] * 8),  # about to come in at the left
+        (5, [5, 0, 0, 0, 0, 0, 0, 0]),  # its front rises in the first cell
+        (20, [4, 8, 4, 0, 0, 0, 0, 0]),  # back cell half empty, front cell half full
+        (64, [0, 0, 0, 0, 0, 0, 8, 8]),  # at the right end
+        (76, [0, 0, 0, 0, 0, 0, 0, 4]),  # on its way out
+        (80, [0] * 8),  # and around again
+        (85, [5, 0, 0, 0, 0, 0, 0, 0]),
+    ],
+)
+def test_a_bar_without_a_total_slides_a_block_an_eighth_at_a_time(step, cells):
+    assert progress.sliding(step, width=8) == cells
+
+
+def test_the_sliding_block_keeps_its_size_while_inside_the_bar():
+    assert {sum(progress.sliding(step, width=8)) for step in range(16, 65)} == {16}
+
+
+def test_the_bar_is_green_blocks_over_a_dim_track():
+    bar = Progress()
+    bar.update(bar.add_task("x", total=4), completed=1)
+    text = progress._bar(bar.tasks[0])
+    assert text.plain == "█" * 7 + "▁" * 21
+    assert {str(s.style) for s in text.spans[:7]} == {"green"}
+    assert {str(s.style) for s in text.spans[7:]} == {"dim"}
+
+
+def test_a_step_without_a_total_or_with_nothing_to_do_still_draws():
+    bar = Progress()
+    bar.add_task("waiting", total=None)
+    bar.add_task("nothing", total=0)
+    waiting, nothing = (progress._bar(task).plain for task in bar.tasks)
+    assert len(waiting) == progress.BAR_WIDTH and set(waiting) <= set("▁▂▃▄▅▆▇█")
+    assert nothing == "█" * progress.BAR_WIDTH
+
+
+def test_the_live_display_draws_block_bars():
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=True, width=100, color_system=None)
+    live = progress.LiveTracker(console)
+    live.step("tcgcsv mtg", total=8, unit="groups").update(3)
+    console.print(live.progress.make_tasks_table(live.progress.tasks))
+    assert "█" * 10 + "▄" + "▁" * 17 in buf.getvalue()  # 3/8 of 28 cells is 10.5
+
+
 def test_live_display_turns_finished_steps_into_lines():
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=True, width=100, color_system=None)
