@@ -27,6 +27,9 @@ from riffle.progress import SILENT, Tracker
 
 BASE = "https://www.mtgo.com"
 KINDS = ("league", "challenge", "showcase", "qualifier", "preliminary", "other")
+# The formats mtgo.com publishes decklists in, spelled as its event names spell them. Tab
+# completion offers these; ingest takes whatever format an event name starts with.
+FORMATS = ("standard", "pioneer", "modern", "legacy", "vintage", "pauper", "premodern", "duel-commander")
 
 _DATA = re.compile(r"window\.MTGO\.decklists\.data\s*=\s*")
 _LINK = re.compile(r'href="(?:https?://(?:www\.)?mtgo\.com)?/decklist/([a-z0-9-]+)"', re.I)

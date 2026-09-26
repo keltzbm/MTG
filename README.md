@@ -46,6 +46,22 @@ riffle legal all                   # every deck; exits 1 if any is illegal
 riffle legal my-deck -f modern     # check against a different format
 ```
 
+## Tab completion
+
+The shell completes by running `riffle` itself, so it has to be on PATH; `uv run
+riffle` completes uv's own arguments instead. Once per machine:
+
+```zsh
+ln -s ~/atelier/github/riffle/.venv/bin/riffle ~/.local/bin/riffle
+riffle --install-completion zsh
+exec zsh
+```
+
+A deck completes from the vault's deck notes, the ones `riffle decks` lists,
+with `all` for `legal` and `export`; anything else, like a path, completes as a
+file. `--to`, `--pin`, `--show`, `--board`, `--kind`, and `--format` complete
+from their lists.
+
 ## Metagame (MTGO)
 
 ```bash

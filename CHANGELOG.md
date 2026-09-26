@@ -7,6 +7,10 @@ Work in progress goes under **Unreleased** and moves into a version heading at r
 ## [Unreleased]
 
 ### Added
+- Tab completion for deck names and option values. With `riffle` itself on PATH (`uv run riffle` completes uv's
+  arguments instead) and `riffle --install-completion zsh` run once, a deck argument completes from the vault's
+  deck notes, plus `all` for `legal` and `export`, and `--to`, `--pin`, `--show`, `--board`, `--kind`, and
+  `--format` complete from their lists. A path still completes as a file.
 - `riffle sync` waits up to two minutes for the network before its first download, since the scheduled job
   runs as the Mac wakes, before Wi-Fi is back. Without a connection by then, it syncs offline: today's
   Scryfall prices from the last download, and the vault from the catalog Postgres already holds.
